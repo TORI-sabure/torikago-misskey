@@ -5,23 +5,13 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 <template>
 <div class="_gaps">
-	<MkFoldableSection expanded>
-		<template #header>{{ i18n.ts._widgets.trends }}</template>
-		<MkLoading v-if="fetchingTrends"/>
-		<MkError v-else-if="trendsError" @retry="fetchTrends"/>
-		<div v-else class="_gaps_s">
-			<MkA
-				v-for="trend in trends"
-				:key="trend.tag"
-				:to="`/tags/${encodeURIComponent(trend.tag)}`"
-				:class="$style.hashtag"
-				class="_panel"
-			>
-				<i class="ti ti-hash" aria-hidden="true"></i>
-				<span>{{ trend.tag }}</span>
-			</MkA>
-		</div>
-	</MkFoldableSection>
+	<div v-if="fetchingTrends || trends.length > 0" :class="$style.trends">
+		<span :class="$style.trendsLabel"><i class="ti ti-trending-up"></i> {{ i18n.ts._widgets.trends }}</span>
+		<MkLoading v-if="fetchingTrends" :inline="true"/>
+		<template v-else>
+			<MkA v-for="trend in trends" :key="trend.tag" :to="`/tags/${encodeURIComponent(trend.tag)}`" :class="$style.trend">#{{ trend.tag }}</MkA>
+		</template>
+	</div>
 
 	<div class="_gaps">
 		<MkInput v-model="searchQuery" large autofocus type="search" @enter.prevent="searchNow">
@@ -163,6 +153,30 @@ onBeforeUnmount(() => {
 	&:hover {
 		background: var(--MI_THEME-panelHighlight);
 		text-decoration: none;
+	}
+}
+
+.trends {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px 10px;
+	padding: 2px 4px;
+	font-size: 0.85em;
+	color: var(--MI_THEME-fgTransparentWeak);
+}
+
+.trendsLabel {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.trend {
+	color: var(--MI_THEME-accentLighten);
+
+	&:hover {
+		text-decoration: underline;
 	}
 }
 </style>
