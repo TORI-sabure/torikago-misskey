@@ -14,7 +14,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			ref="tlComponent"
 			:key="src + withRenotes + withReplies + onlyFiles + withSensitive"
 			:class="$style.tl"
-			:src="(src.split(':')[0] as (BasicTimelineType | 'recommended' | 'list'))"
+			:src="(src.split(':')[0] as (BasicTimelineType | 'list'))"
 			:list="src.split(':')[1]"
 			:withRenotes="withRenotes"
 			:withReplies="withReplies"
@@ -48,9 +48,9 @@ import { prefer } from '@/preferences.js';
 
 const tlComponent = useTemplateRef('tlComponent');
 
-type TimelinePageSrc = BasicTimelineType | 'recommended' | `list:${string}`;
+type TimelinePageSrc = BasicTimelineType | `list:${string}`;
 
-const srcWhenNotSignin = ref<'local' | 'global' | 'recommended'>(isAvailableBasicTimeline('local') ? 'local' : 'global');
+const srcWhenNotSignin = ref<'local' | 'global'>(isAvailableBasicTimeline('local') ? 'local' : 'global');
 const src = computed<TimelinePageSrc>({
 	get: () => ($i ? store.r.tl.value.src : srcWhenNotSignin.value),
 	set: (x) => saveSrc(x),
@@ -179,8 +179,8 @@ function saveSrc(newSrc: TimelinePageSrc): void {
 	}
 
 	store.set('tl', out);
-	if (['local', 'global', 'recommended'].includes(newSrc)) {
-		srcWhenNotSignin.value = newSrc as 'local' | 'global' | 'recommended';
+	if (['local', 'global'].includes(newSrc)) {
+		srcWhenNotSignin.value = newSrc as 'local' | 'global';
 	}
 }
 
@@ -193,10 +193,7 @@ function saveTlFilter(key: keyof typeof store.s.tl.filter, newValue: boolean) {
 
 function switchTlIfNeeded() {
 	if (isBasicTimeline(src.value) && !isAvailableBasicTimeline(src.value)) {
-		const fallback = availableBasicTimelines()[0];
-		if (fallback) src.value = fallback;
-	} else if (src.value === 'recommended' && !isAvailableBasicTimeline('global')) {
-		src.value = availableBasicTimelines()[0] ?? 'global';
+		src.value = availableBasicTimelines()[0];
 	}
 }
 
@@ -214,14 +211,12 @@ const headerActions = computed<PageHeaderItem[]>(() => {
 		handler: (ev) => {
 			const menuItems: MenuItem[] = [];
 
-			if (src.value !== 'recommended') {
-				menuItems.push({
-					type: 'switch',
-					icon: 'ti ti-repeat',
-					text: i18n.ts.showRenotes,
-					ref: withRenotes,
-				});
-			}
+			menuItems.push({
+				type: 'switch',
+				icon: 'ti ti-repeat',
+				text: i18n.ts.showRenotes,
+				ref: withRenotes,
+			});
 
 			if (isBasicTimeline(src.value) && hasWithReplies(src.value)) {
 				menuItems.push({
@@ -238,19 +233,13 @@ const headerActions = computed<PageHeaderItem[]>(() => {
 				icon: 'ti ti-eye-exclamation',
 				text: i18n.ts.withSensitive,
 				ref: withSensitive,
-			});
-
-			if (src.value !== 'recommended') {
-				menuItems.push({
-					type: 'switch',
-					icon: 'ti ti-photo',
-					text: i18n.ts.fileAttachedOnly,
-					ref: onlyFiles,
-					disabled: isBasicTimeline(src.value) && hasWithReplies(src.value) ? withReplies : false,
-				});
-			}
-
-			menuItems.push({
+			}, {
+				type: 'switch',
+				icon: 'ti ti-photo',
+				text: i18n.ts.fileAttachedOnly,
+				ref: onlyFiles,
+				disabled: isBasicTimeline(src.value) && hasWithReplies(src.value) ? withReplies : false,
+			}, {
 				type: 'divider',
 			}, {
 				type: 'switch',
@@ -285,12 +274,7 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	title: i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
-})), ...(isAvailableBasicTimeline('global') ? [{
-	key: 'recommended',
-	title: i18n.ts.recommended,
-	icon: 'ti ti-sparkles',
-	iconOnly: true,
-}] : []), {
+})), {
 	icon: 'ti ti-list',
 	title: i18n.ts.lists,
 	iconOnly: true,
@@ -312,16 +296,11 @@ const headerTabsWhenNotLogin = computed(() => [...availableBasicTimelines().map(
 	title: i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
-})), ...(isAvailableBasicTimeline('global') ? [{
-	key: 'recommended',
-	title: i18n.ts.recommended,
-	icon: 'ti ti-sparkles',
-	iconOnly: true,
-}] : [])] as Tab[]);
+}))] as Tab[]);
 
 definePage(() => ({
 	title: i18n.ts.timeline,
-	icon: src.value === 'recommended' ? 'ti ti-sparkles' : isBasicTimeline(src.value) ? basicTimelineIconClass(src.value) : 'ti ti-home',
+	icon: isBasicTimeline(src.value) ? basicTimelineIconClass(src.value) : 'ti ti-home',
 }));
 </script>
 
