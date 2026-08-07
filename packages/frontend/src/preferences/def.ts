@@ -177,7 +177,7 @@ export const PREF_DEF = definePreferences({
 		default: true,
 	},
 	rememberNoteVisibility: {
-		default: false,
+		default: true,
 	},
 	reportError: {
 		default: false,
