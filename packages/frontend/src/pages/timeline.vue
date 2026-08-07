@@ -50,9 +50,7 @@ const tlComponent = useTemplateRef('tlComponent');
 
 type TimelinePageSrc = BasicTimelineType | 'recommended' | `list:${string}`;
 
-const srcWhenNotSignin = ref<'local' | 'global' | 'recommended'>(
-	isAvailableBasicTimeline('local') ? 'local' : isAvailableBasicTimeline('global') ? 'global' : 'recommended',
-);
+const srcWhenNotSignin = ref<'local' | 'global' | 'recommended'>(isAvailableBasicTimeline('local') ? 'local' : 'global');
 const src = computed<TimelinePageSrc>({
 	get: () => ($i ? store.r.tl.value.src : srcWhenNotSignin.value),
 	set: (x) => saveSrc(x),
@@ -195,7 +193,10 @@ function saveTlFilter(key: keyof typeof store.s.tl.filter, newValue: boolean) {
 
 function switchTlIfNeeded() {
 	if (isBasicTimeline(src.value) && !isAvailableBasicTimeline(src.value)) {
-		src.value = availableBasicTimelines()[0] ?? 'recommended';
+		const fallback = availableBasicTimelines()[0];
+		if (fallback) src.value = fallback;
+	} else if (src.value === 'recommended' && !isAvailableBasicTimeline('global')) {
+		src.value = availableBasicTimelines()[0] ?? 'global';
 	}
 }
 
@@ -284,12 +285,12 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	title: i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
-})), {
+})), ...(isAvailableBasicTimeline('global') ? [{
 	key: 'recommended',
 	title: i18n.ts.recommended,
 	icon: 'ti ti-sparkles',
 	iconOnly: true,
-}, {
+}] : []), {
 	icon: 'ti ti-list',
 	title: i18n.ts.lists,
 	iconOnly: true,
@@ -311,12 +312,12 @@ const headerTabsWhenNotLogin = computed(() => [...availableBasicTimelines().map(
 	title: i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
-})), {
+})), ...(isAvailableBasicTimeline('global') ? [{
 	key: 'recommended',
 	title: i18n.ts.recommended,
 	icon: 'ti ti-sparkles',
 	iconOnly: true,
-}] as Tab[]);
+}] : [])] as Tab[]);
 
 definePage(() => ({
 	title: i18n.ts.timeline,
