@@ -121,6 +121,15 @@ if (props.src === 'antenna') {
 		})),
 		useShallowRef: true,
 	}));
+} else if (props.src === 'mutual') {
+	paginator = markRaw(new Paginator('notes/timeline', {
+		computedParams: computed(() => ({
+			withRenotes: props.withRenotes,
+			withFiles: props.onlyFiles ? true : undefined,
+			mutualOnly: true,
+		}) as unknown as Misskey.Endpoints['notes/timeline']['req']),
+		useShallowRef: true,
+	}));
 } else if (props.src === 'local') {
 	paginator = markRaw(new Paginator('notes/local-timeline', {
 		computedParams: computed(() => ({
@@ -407,6 +416,10 @@ watch(() => [props.list, props.antenna, props.channel, props.role, props.withRen
 	}
 });
 watch(() => props.withSensitive, reloadTimeline);
+
+useInterval(() => {
+	if (store.s.realtimeMode && props.src === 'mutual') void paginator.fetchNewer();
+}, 1000 * 30, { afterMounted: true });
 
 onUnmounted(() => {
 	disconnectChannel();
