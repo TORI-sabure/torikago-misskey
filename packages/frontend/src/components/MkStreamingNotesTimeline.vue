@@ -149,8 +149,11 @@ if (props.src === 'antenna') {
 		useShallowRef: true,
 	}));
 } else if (props.src === 'recommended') {
-	const recommendedPaginator = markRaw(new Paginator('notes/featured', {
+	const recommendedPaginator = markRaw(new Paginator('notes/global-timeline', {
 		limit: 30,
+		params: {
+			withRenotes: true,
+		},
 		noPaging: true,
 		useShallowRef: true,
 	}));
@@ -523,28 +526,7 @@ defineExpose({
 	height: 75%;
 	-webkit-backdrop-filter: var(--MI-blur, blur(4px));
 	backdrop-filter: var(--MI-blur, blur(4px));
-	mask-image: linear-gradient( /* 疑似Easing Linear Gradients */
-		to top,
-		rgb(0 0 0 / 0%) 0%,
-		rgb(0 0 0 / 4.9%) 15.5%,
-		rgb(0 0 0 / 10.4%) 22.5%,
-		rgb(0 0 0 / 45%) 47.1%,
-		rgb(0 0 0 / 55%) 52.9%,
-		rgb(0 0 0 / 89.6%) 77.5%,
-		rgb(0 0 0 / 95.1%) 91.9%,
-		rgb(0 0 0 / 100%) 100%
-	);
-}
-
-.newButton {
-	position: relative;
-	display: block;
-	padding: 6px 12px;
-	border-radius: 999px;
-	width: max-content;
-	margin: auto;
-	background: var(--MI_THEME-accent);
-	color: var(--MI_THEME-fgOnAccent);
+	mask-…128 tokens truncated… var(--MI_THEME-fgOnAccent);
 	font-size: 90%;
 
 	&:hover {
