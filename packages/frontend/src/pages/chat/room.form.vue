@@ -330,7 +330,7 @@ onBeforeUnmount(() => {
 // Avoid an iOS WebKit compositing bug that can make text in a textarea with
 // backdrop-filter disappear while editing.
 @supports (-webkit-touch-callout: none) {
-	.textarea {
+	.textarea:global(._acrylic) {
 		-webkit-backdrop-filter: none;
 		backdrop-filter: none;
 		background: var(--MI_THEME-panel);
