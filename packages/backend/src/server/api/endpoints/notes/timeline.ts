@@ -162,9 +162,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 		if (ps.mutualOnly) {
 			query
-				.innerJoin('following', 'following', 'following.followeeId = note.userId AND following.followerId = :meId', { meId: me.id })
-				.innerJoin('following', 'reverseFollowing', 'reverseFollowing.followerId = note.userId AND reverseFollowing.followeeId = :meId', { meId: me.id })
-				.andWhere('note.channelId IS NULL');
+				.leftJoin('following', 'following', 'following.followeeId = note.userId AND following.followerId = :meId', { meId: me.id })
+				.leftJoin('following', 'reverseFollowing', 'reverseFollowing.followerId = note.userId AND reverseFollowing.followeeId = :meId', { meId: me.id })
+				.andWhere('note.channelId IS NULL')
+				.andWhere(new Brackets(qb => {
+					qb.where('note.userId = :meId', { meId: me.id });
+					qb.orWhere('following.id IS NOT NULL AND reverseFollowing.id IS NOT NULL');
+				}));
 		} else {
 
 		if (followees.length > 0 && followingChannelIds.length > 0) {
