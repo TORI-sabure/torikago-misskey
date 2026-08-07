@@ -14,7 +14,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			ref="tlComponent"
 			:key="src + withRenotes + withReplies + onlyFiles + withSensitive"
 			:class="$style.tl"
-			:src="(src.split(':')[0] as (BasicTimelineType | 'list'))"
+			:src="(src.split(':')[0] as (BasicTimelineType | 'recommended' | 'list'))"
 			:list="src.split(':')[1]"
 			:withRenotes="withRenotes"
 			:withReplies="withReplies"
@@ -48,9 +48,11 @@ import { prefer } from '@/preferences.js';
 
 const tlComponent = useTemplateRef('tlComponent');
 
-type TimelinePageSrc = BasicTimelineType | `list:${string}`;
+type TimelinePageSrc = BasicTimelineType | 'recommended' | `list:${string}`;
 
-const srcWhenNotSignin = ref<'local' | 'global'>(isAvailableBasicTimeline('local') ? 'local' : 'global');
+const srcWhenNotSignin = ref<'local' | 'global' | 'recommended'>(
+	isAvailableBasicTimeline('local') ? 'local' : isAvailableBasicTimeline('global') ? 'global' : 'recommended',
+);
 const src = computed<TimelinePageSrc>({
 	get: () => ($i ? store.r.tl.value.src : srcWhenNotSignin.value),
 	set: (x) => saveSrc(x),
@@ -179,8 +181,8 @@ function saveSrc(newSrc: TimelinePageSrc): void {
 	}
 
 	store.set('tl', out);
-	if (['local', 'global'].includes(newSrc)) {
-		srcWhenNotSignin.value = newSrc as 'local' | 'global';
+	if (['local', 'global', 'recommended'].includes(newSrc)) {
+		srcWhenNotSignin.value = newSrc as 'local' | 'global' | 'recommended';
 	}
 }
 
@@ -193,7 +195,7 @@ function saveTlFilter(key: keyof typeof store.s.tl.filter, newValue: boolean) {
 
 function switchTlIfNeeded() {
 	if (isBasicTimeline(src.value) && !isAvailableBasicTimeline(src.value)) {
-		src.value = availableBasicTimelines()[0];
+		src.value = availableBasicTimelines()[0] ?? 'recommended';
 	}
 }
 
@@ -211,12 +213,14 @@ const headerActions = computed<PageHeaderItem[]>(() => {
 		handler: (ev) => {
 			const menuItems: MenuItem[] = [];
 
-			menuItems.push({
-				type: 'switch',
-				icon: 'ti ti-repeat',
-				text: i18n.ts.showRenotes,
-				ref: withRenotes,
-			});
+			if (src.value !== 'recommended') {
+				menuItems.push({
+					type: 'switch',
+					icon: 'ti ti-repeat',
+					text: i18n.ts.showRenotes,
+					ref: withRenotes,
+				});
+			}
 
 			if (isBasicTimeline(src.value) && hasWithReplies(src.value)) {
 				menuItems.push({
@@ -233,13 +237,19 @@ const headerActions = computed<PageHeaderItem[]>(() => {
 				icon: 'ti ti-eye-exclamation',
 				text: i18n.ts.withSensitive,
 				ref: withSensitive,
-			}, {
-				type: 'switch',
-				icon: 'ti ti-photo',
-				text: i18n.ts.fileAttachedOnly,
-				ref: onlyFiles,
-				disabled: isBasicTimeline(src.value) && hasWithReplies(src.value) ? withReplies : false,
-			}, {
+			});
+
+			if (src.value !== 'recommended') {
+				menuItems.push({
+					type: 'switch',
+					icon: 'ti ti-photo',
+					text: i18n.ts.fileAttachedOnly,
+					ref: onlyFiles,
+					disabled: isBasicTimeline(src.value) && hasWithReplies(src.value) ? withReplies : false,
+				});
+			}
+
+			menuItems.push({
 				type: 'divider',
 			}, {
 				type: 'switch',
@@ -275,6 +285,11 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
 })), {
+	key: 'recommended',
+	title: i18n.ts.recommended,
+	icon: 'ti ti-sparkles',
+	iconOnly: true,
+}, {
 	icon: 'ti ti-list',
 	title: i18n.ts.lists,
 	iconOnly: true,
@@ -296,11 +311,16 @@ const headerTabsWhenNotLogin = computed(() => [...availableBasicTimelines().map(
 	title: i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
-}))] as Tab[]);
+})), {
+	key: 'recommended',
+	title: i18n.ts.recommended,
+	icon: 'ti ti-sparkles',
+	iconOnly: true,
+}] as Tab[]);
 
 definePage(() => ({
 	title: i18n.ts.timeline,
-	icon: isBasicTimeline(src.value) ? basicTimelineIconClass(src.value) : 'ti ti-home',
+	icon: src.value === 'recommended' ? 'ti ti-sparkles' : isBasicTimeline(src.value) ? basicTimelineIconClass(src.value) : 'ti ti-home',
 }));
 </script>
 
