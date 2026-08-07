@@ -7,6 +7,7 @@ import { Inject, Injectable, Scope } from '@nestjs/common';
 import type { Packed } from '@/misc/json-schema.js';
 import { NoteEntityService } from '@/core/entities/NoteEntityService.js';
 import { NoteStreamingHidingService } from '../NoteStreamingHidingService.js';
+import { UserFollowingService } from '@/core/UserFollowingService.js';
 import { bindThis } from '@/decorators.js';
 import { isRenotePacked, isQuotePacked } from '@/misc/is-renote.js';
 import type { JsonObject } from '@/misc/json-value.js';
@@ -21,6 +22,7 @@ export class HomeTimelineChannel extends Channel {
 	public static kind = 'read:account';
 	private withRenotes: boolean;
 	private withFiles: boolean;
+	private mutualOnly: boolean;
 
 	constructor(
 		@Inject(REQUEST)
@@ -28,6 +30,7 @@ export class HomeTimelineChannel extends Channel {
 
 		private noteEntityService: NoteEntityService,
 		private noteStreamingHidingService: NoteStreamingHidingService,
+		private userFollowingService: UserFollowingService,
 	) {
 		super(request);
 		//this.onNote = this.onNote.bind(this);
@@ -37,6 +40,7 @@ export class HomeTimelineChannel extends Channel {
 	public async init(params: JsonObject) {
 		this.withRenotes = !!(params.withRenotes ?? true);
 		this.withFiles = !!(params.withFiles ?? false);
+		this.mutualOnly = !!(params.mutualOnly ?? false);
 
 		this.subscriber.on('notesStream', this.onNote);
 	}
@@ -44,6 +48,15 @@ export class HomeTimelineChannel extends Channel {
 	@bindThis
 	private async onNote(note: Packed<'Note'>) {
 		const isMe = this.user!.id === note.userId;
+
+		if (this.mutualOnly) {
+			if (note.channelId) return;
+			if (!isMe) {
+				const isMutual = Object.hasOwn(this.following, note.userId)
+					&& await this.userFollowingService.isFollowing(note.userId, this.user!.id);
+				if (!isMutual) return;
+			}
+		}
 
 		if (this.withFiles && (note.fileIds == null || note.fileIds.length === 0)) return;
 
@@ -105,3 +118,4 @@ export class HomeTimelineChannel extends Channel {
 		this.subscriber.off('notesStream', this.onNote);
 	}
 }
+
