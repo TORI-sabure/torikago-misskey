@@ -46,6 +46,9 @@ export const Default = {
 				http.post('/api/users/search', () => {
 					return HttpResponse.json([userDetailed(), localUser]);
 				}),
+				http.post('/api/hashtags/search', () => {
+					return HttpResponse.json(['misskey', 'misskeyio']);
+				}),
 			],
 		},
 	},
@@ -84,5 +87,14 @@ export const WithUserType = {
 	...Default,
 	args: {
 		type: 'user',
+	},
+} satisfies StoryObj<typeof search_>;
+
+export const WithHashtagType = {
+	...Default,
+	args: {
+		...Default.args,
+		type: 'tag',
+		query: 'misskey',
 	},
 } satisfies StoryObj<typeof search_>;
