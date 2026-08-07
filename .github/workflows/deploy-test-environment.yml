@@ -72,10 +72,66 @@ jobs:
 
   deploy-test-environment-wd:
     if: github.event_name == 'workflow_dispatch'
-    uses: joinmisskey/misskey-tga/.github/workflows/deploy-test-environment.yml@main
-    with:
-      repository: ${{ inputs.repository || github.repository }}
-      branch_or_hash: ${{ inputs.branch_or_hash || github.ref_name }}
-      wait_time: ${{ inputs.wait_time || '1800' }}
-    secrets:
-      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set deployment variables
+        run: |
+          echo "REPOSITORY=${{ inputs.repository || github.repository }}" >> $GITHUB_ENV
+          echo "BRANCH_OR_HASH=${{ inputs.branch_or_hash || github.ref_name }}" >> $GITHUB_ENV
+          echo "WAIT_TIME=${{ inputs.wait_time || '1800' }}" >> $GITHUB_ENV
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REPOSITORY }}
+          ref: ${{ env.BRANCH_OR_HASH }}
+
+      - name: Start Cloudflare quick tunnel
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+          sudo cloudflared tunnel --metrics localhost:55555 --url localhost:3000 > /dev/null 2>&1 &
+          sleep 15
+          TUNNEL_RESPONSE=$(curl --fail --silent http://localhost:55555/quicktunnel)
+          TUNNEL_DOMAIN=$(echo "$TUNNEL_RESPONSE" | grep -o '"hostname":"[^"]*' | grep -o '[^"]*$')
+          test -n "$TUNNEL_DOMAIN"
+          echo "::add-mask::$TUNNEL_DOMAIN"
+          echo "TUNNEL_DOMAIN=$TUNNEL_DOMAIN" >> $GITHUB_ENV
+
+      - name: Install Misskey
+        run: |
+          wget -q https://raw.githubusercontent.com/joinmisskey/bash-install/v4/misskey-install.sh
+          wget -q https://raw.githubusercontent.com/joinmisskey/bash-install/v4/testenv_githubactions.txt
+          sed -i "s/host=127.0.0.1/host=$TUNNEL_DOMAIN/g" testenv_githubactions.txt
+          sed -i "s|git_repository=https://github.com/misskey-dev/misskey|git_repository=https://github.com/$REPOSITORY|g" testenv_githubactions.txt
+          sed -i "s|git_branch=master|git_branch=$BRANCH_OR_HASH|g" testenv_githubactions.txt
+          sudo sed -i '/^[[:space:]]*XDG_CONFIG_HOME[[:space:]]*=/d' /etc/environment
+          unset XDG_CONFIG_HOME
+          sudo chmod 555 ./misskey-install.sh
+          sudo bash -x ./misskey-install.sh -c ./testenv_githubactions.txt
+
+      - name: Initialize and verify database
+        run: |
+          sudo -iu misskey bash -lc 'cd /home/misskey/misskey && pnpm run init'
+          sudo -iu postgres psql -d misskey -tAc "SELECT to_regclass('public.meta')" | grep -qx meta
+          sudo systemctl restart "$TUNNEL_DOMAIN"
+          for attempt in $(seq 1 20); do
+            if sudo systemctl is-active --quiet "$TUNNEL_DOMAIN" && curl --fail --silent http://localhost:3000/api/meta > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          sudo journalctl -u "$TUNNEL_DOMAIN" --no-pager -n 100
+          exit 1
+
+      - name: Post tunnel info to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          CURRENT_TIME=$(TZ=Asia/Tokyo date +'%Y-%m-%d %H:%M:%S JST')
+          COMMIT_URL="https://github.com/$REPOSITORY/commit/$(git rev-parse HEAD)"
+          curl --fail -X POST -H "Content-Type: application/json" -d "{\"content\": \"==============================\nURL: https://$TUNNEL_DOMAIN\nRepository: $REPOSITORY\nBranch or Commit hash: $BRANCH_OR_HASH\nCommit: $COMMIT_URL\nTime: $CURRENT_TIME\n==============================\"}" "$DISCORD_WEBHOOK_URL"
+
+      - name: Wait
+        run: timeout "$WAIT_TIME" tail -f /var/log/syslog || true
+
