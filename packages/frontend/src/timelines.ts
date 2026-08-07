@@ -7,8 +7,8 @@ import { $i } from '@/i.js';
 import { instance } from '@/instance.js';
 
 export const basicTimelineTypes = [
-	'home',
 	'mutual',
+	'home',
 	'local',
 	'social',
 	'global',
