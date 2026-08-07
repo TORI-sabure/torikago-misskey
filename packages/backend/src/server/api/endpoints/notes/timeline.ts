@@ -50,6 +50,7 @@ export const paramDef = {
 		includeLocalRenotes: { type: 'boolean', default: true },
 		withFiles: { type: 'boolean', default: false },
 		withRenotes: { type: 'boolean', default: true },
+		mutualOnly: { type: 'boolean', default: false },
 	},
 	required: [],
 } as const;
@@ -77,7 +78,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const untilId = ps.untilId ?? (ps.untilDate ? this.idService.gen(ps.untilDate!) : null);
 			const sinceId = ps.sinceId ?? (ps.sinceDate ? this.idService.gen(ps.sinceDate!) : null);
 
-			if (!this.serverSettings.enableFanoutTimeline) {
+			if (!this.serverSettings.enableFanoutTimeline || ps.mutualOnly) {
 				const timeline = await this.getFromDb({
 					untilId,
 					sinceId,
@@ -87,6 +88,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					includeLocalRenotes: ps.includeLocalRenotes,
 					withFiles: ps.withFiles,
 					withRenotes: ps.withRenotes,
+					mutualOnly: ps.mutualOnly,
 				}, me);
 
 				process.nextTick(() => {
@@ -128,6 +130,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					includeLocalRenotes: ps.includeLocalRenotes,
 					withFiles: ps.withFiles,
 					withRenotes: ps.withRenotes,
+					mutualOnly: false,
 				}, me),
 			});
 
@@ -139,7 +142,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		});
 	}
 
-	private async getFromDb(ps: { untilId: string | null; sinceId: string | null; limit: number; includeMyRenotes: boolean; includeRenotedMyNotes: boolean; includeLocalRenotes: boolean; withFiles: boolean; withRenotes: boolean; }, me: MiLocalUser) {
+	private async getFromDb(ps: { untilId: string | null; sinceId: string | null; limit: number; includeMyRenotes: boolean; includeRenotedMyNotes: boolean; includeLocalRenotes: boolean; withFiles: boolean; withRenotes: boolean; mutualOnly: boolean; }, me: MiLocalUser) {
 		const followees = await this.userFollowingService.getFollowees(me.id);
 
 		const mutingChannelIds = await this.channelMutingService
@@ -156,6 +159,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			.leftJoinAndSelect('note.renote', 'renote')
 			.leftJoinAndSelect('reply.user', 'replyUser')
 			.leftJoinAndSelect('renote.user', 'renoteUser');
+
+		if (ps.mutualOnly) {
+			query
+				.innerJoin('following', 'following', 'following.followeeId = note.userId AND following.followerId = :meId', { meId: me.id })
+				.innerJoin('following', 'reverseFollowing', 'reverseFollowing.followerId = note.userId AND reverseFollowing.followeeId = :meId', { meId: me.id })
+				.andWhere('note.channelId IS NULL');
+		} else {
 
 		if (followees.length > 0 && followingChannelIds.length > 0) {
 			// ユーザー・チャンネルともにフォローあり
@@ -201,6 +211,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					.andWhere('note.channelId IS NULL')
 					.andWhere('note.userId = :meId', { meId: me.id });
 			}));
+		}
 		}
 
 		query.andWhere(new Brackets(qb => {
@@ -266,3 +277,4 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return await query.limit(ps.limit).getMany();
 	}
 }
+
