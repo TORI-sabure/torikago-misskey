@@ -30,7 +30,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			tag="div"
 		>
 			<template v-for="(note, i) in paginator.items.value" :key="note.id">
-				<div v-if="props.src !== 'recommended' && i > 0 && isSeparatorNeeded(paginator.items.value[i -1].createdAt, note.createdAt)" :data-scroll-anchor="note.id">
+				<div v-if="i > 0 && isSeparatorNeeded(paginator.items.value[i -1].createdAt, note.createdAt)" :data-scroll-anchor="note.id">
 					<div :class="$style.date">
 						<span><i class="ti ti-chevron-up"></i> {{ getSeparatorInfo(paginator.items.value[i -1].createdAt, note.createdAt)?.prevText }}</span>
 						<span style="height: 1em; width: 1px; background: var(--MI_THEME-divider);"></span>
@@ -78,10 +78,9 @@ import { DI } from '@/di.js';
 import { globalEvents, useGlobalEvent } from '@/events.js';
 import { isSeparatorNeeded, getSeparatorInfo } from '@/utility/timeline-date-separate.js';
 import { Paginator } from '@/utility/paginator.js';
-import { sortRecommendedNotes } from '@/utility/recommended-notes.js';
 
 const props = withDefaults(defineProps<{
-	src: BasicTimelineType | 'recommended' | 'mentions' | 'directs' | 'list' | 'antenna' | 'channel' | 'role';
+	src: BasicTimelineType | 'mentions' | 'directs' | 'list' | 'antenna' | 'channel' | 'role';
 	list?: string;
 	antenna?: string;
 	channel?: string;
@@ -148,19 +147,6 @@ if (props.src === 'antenna') {
 		})),
 		useShallowRef: true,
 	}));
-} else if (props.src === 'recommended') {
-	const recommendedPaginator = markRaw(new Paginator('notes/global-timeline', {
-		limit: 30,
-		params: {
-			withRenotes: true,
-		},
-		noPaging: true,
-		useShallowRef: true,
-	}));
-	watch(recommendedPaginator.items, notes => {
-		sortRecommendedNotes(notes);
-	}, { flush: 'sync' });
-	paginator = recommendedPaginator;
 } else if (props.src === 'mentions') {
 	paginator = markRaw(new Paginator('notes/mentions', {
 		useShallowRef: true,
@@ -263,7 +249,7 @@ const POLLING_INTERVAL =
 	prefer.s.pollingInterval === 3 ? MIN_POLLING_INTERVAL :
 	MIN_POLLING_INTERVAL;
 
-if (!store.s.realtimeMode && props.src !== 'recommended') {
+if (!store.s.realtimeMode) {
 	// TODO: 先頭のノートの作成日時が1日以上前であれば流速が遅いTLと見做してインターバルを通常より延ばす
 	useInterval(async () => {
 		paginator.fetchNewer({
@@ -526,7 +512,28 @@ defineExpose({
 	height: 75%;
 	-webkit-backdrop-filter: var(--MI-blur, blur(4px));
 	backdrop-filter: var(--MI-blur, blur(4px));
-	mask-…128 tokens truncated… var(--MI_THEME-fgOnAccent);
+	mask-image: linear-gradient( /* 疑似Easing Linear Gradients */
+		to top,
+		rgb(0 0 0 / 0%) 0%,
+		rgb(0 0 0 / 4.9%) 15.5%,
+		rgb(0 0 0 / 10.4%) 22.5%,
+		rgb(0 0 0 / 45%) 47.1%,
+		rgb(0 0 0 / 55%) 52.9%,
+		rgb(0 0 0 / 89.6%) 77.5%,
+		rgb(0 0 0 / 95.1%) 91.9%,
+		rgb(0 0 0 / 100%) 100%
+	);
+}
+
+.newButton {
+	position: relative;
+	display: block;
+	padding: 6px 12px;
+	border-radius: 999px;
+	width: max-content;
+	margin: auto;
+	background: var(--MI_THEME-accent);
+	color: var(--MI_THEME-fgOnAccent);
 	font-size: 90%;
 
 	&:hover {
