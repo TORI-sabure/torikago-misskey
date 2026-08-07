@@ -318,6 +318,7 @@ const stream = store.s.realtimeMode ? useStream() : null;
 const connections = {
 	antenna: null as Misskey.IChannelConnection<Misskey.Channels['antenna']> | null,
 	homeTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
+	mutualTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
 	localTimeline: null as Misskey.IChannelConnection<Misskey.Channels['localTimeline']> | null,
 	hybridTimeline: null as Misskey.IChannelConnection<Misskey.Channels['hybridTimeline']> | null,
 	globalTimeline: null as Misskey.IChannelConnection<Misskey.Channels['globalTimeline']> | null,
@@ -342,6 +343,13 @@ function connectChannel() {
 		});
 		connections.main = stream.useChannel('main');
 		connections.homeTimeline.on('note', prepend);
+	} else if (props.src === 'mutual') {
+		connections.mutualTimeline = stream.useChannel('homeTimeline', {
+			withRenotes: props.withRenotes,
+			withFiles: props.onlyFiles ? true : undefined,
+			mutualOnly: true,
+		} as unknown as Misskey.Channels['homeTimeline']['params']);
+		connections.mutualTimeline.on('note', prepend);
 	} else if (props.src === 'local') {
 		connections.localTimeline = stream.useChannel('localTimeline', {
 			withRenotes: props.withRenotes,
@@ -417,9 +425,6 @@ watch(() => [props.list, props.antenna, props.channel, props.role, props.withRen
 });
 watch(() => props.withSensitive, reloadTimeline);
 
-useInterval(() => {
-	if (store.s.realtimeMode && props.src === 'mutual') void paginator.fetchNewer();
-}, 1000 * 30, { afterMounted: true });
 
 onUnmounted(() => {
 	disconnectChannel();
