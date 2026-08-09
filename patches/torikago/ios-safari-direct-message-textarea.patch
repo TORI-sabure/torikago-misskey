@@ -1,0 +1,20 @@
+diff --git a/packages/frontend/src/pages/chat/room.form.vue b/packages/frontend/src/pages/chat/room.form.vue
+--- a/packages/frontend/src/pages/chat/room.form.vue
++++ b/packages/frontend/src/pages/chat/room.form.vue
+@@ -327,6 +327,16 @@
+ 	field-sizing: content;
+ }
+ 
++// TORIKAGO PATCH: iOS WebKit can hide textarea text while editing when
++// backdrop-filter is active. Remove this block when Misskey fixes it upstream.
++@supports (-webkit-touch-callout: none) {
++	.textarea:global(._acrylic) {
++		-webkit-backdrop-filter: none;
++		backdrop-filter: none;
++		background: var(--MI_THEME-panel);
++	}
++}
++
+ .footer {
+ 	position: sticky;
+ 	bottom: 0;

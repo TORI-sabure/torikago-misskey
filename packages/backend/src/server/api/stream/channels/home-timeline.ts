@@ -8,6 +8,7 @@ import type { Packed } from '@/misc/json-schema.js';
 import { NoteEntityService } from '@/core/entities/NoteEntityService.js';
 import { NoteStreamingHidingService } from '../NoteStreamingHidingService.js';
 import { UserFollowingService } from '@/core/UserFollowingService.js';
+import type { GlobalEvents } from '@/core/GlobalEventService.js';
 import { bindThis } from '@/decorators.js';
 import { isRenotePacked, isQuotePacked } from '@/misc/is-renote.js';
 import type { JsonObject } from '@/misc/json-value.js';
@@ -23,6 +24,13 @@ export class HomeTimelineChannel extends Channel {
 	private withRenotes: boolean;
 	private withFiles: boolean;
 	private mutualOnly: boolean;
+	/**
+	 * Reverse-follow checks are kept per stream connection, never as an author's
+	 * complete follower list. This keeps memory bounded even for popular users.
+	 */
+	private mutualRelationCache = new Map<string, { value: boolean; expiresAt: number }>();
+	private static readonly mutualRelationCacheLifetime = 1000 * 60;
+	private static readonly mutualRelationCacheMaxEntries = 256;
 
 	constructor(
 		@Inject(REQUEST)
@@ -43,6 +51,40 @@ export class HomeTimelineChannel extends Channel {
 		this.mutualOnly = !!(params.mutualOnly ?? false);
 
 		this.subscriber.on('notesStream', this.onNote);
+		if (this.mutualOnly) {
+			this.subscriber.on('internal', this.onInternalEvent);
+		}
+	}
+
+	@bindThis
+	private onInternalEvent(event: GlobalEvents['internal']['payload']) {
+		if (event.type !== 'follow' && event.type !== 'unfollow') return;
+
+		// The relation used here is author -> current user. Normal follow/unfollow
+		// events invalidate it immediately; the short TTL covers exceptional paths.
+		if (event.body.followeeId === this.user?.id) {
+			this.mutualRelationCache.delete(event.body.followerId);
+		}
+	}
+
+	@bindThis
+	private async isMutualAuthor(userId: string): Promise<boolean> {
+		if (!Object.hasOwn(this.following, userId)) return false;
+
+		const cached = this.mutualRelationCache.get(userId);
+		const now = Date.now();
+		if (cached && cached.expiresAt > now) return cached.value;
+
+		const value = await this.userFollowingService.isFollowing(userId, this.user!.id);
+		if (this.mutualRelationCache.size >= HomeTimelineChannel.mutualRelationCacheMaxEntries) {
+			const oldestKey = this.mutualRelationCache.keys().next().value;
+			if (oldestKey) this.mutualRelationCache.delete(oldestKey);
+		}
+		this.mutualRelationCache.set(userId, {
+			value,
+			expiresAt: now + HomeTimelineChannel.mutualRelationCacheLifetime,
+		});
+		return value;
 	}
 
 	@bindThis
@@ -52,8 +94,7 @@ export class HomeTimelineChannel extends Channel {
 		if (this.mutualOnly) {
 			if (note.channelId) return;
 			if (!isMe) {
-				const isMutual = Object.hasOwn(this.following, note.userId)
-					&& await this.userFollowingService.isFollowing(note.userId, this.user!.id);
+				const isMutual = await this.isMutualAuthor(note.userId);
 				if (!isMutual) return;
 			}
 		}
@@ -116,6 +157,9 @@ export class HomeTimelineChannel extends Channel {
 	public dispose() {
 		// Unsubscribe events
 		this.subscriber.off('notesStream', this.onNote);
+		if (this.mutualOnly) {
+			this.subscriber.off('internal', this.onInternalEvent);
+		}
+		this.mutualRelationCache.clear();
 	}
 }
-
