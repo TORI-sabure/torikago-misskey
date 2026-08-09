@@ -327,8 +327,8 @@ onBeforeUnmount(() => {
 	field-sizing: content;
 }
 
-// Avoid an iOS WebKit compositing bug that can make text in a textarea with
-// backdrop-filter disappear while editing.
+// TORIKAGO PATCH: iOS WebKit can hide textarea text while editing when
+// backdrop-filter is active. Remove this block when Misskey fixes it upstream.
 @supports (-webkit-touch-callout: none) {
 	.textarea:global(._acrylic) {
 		-webkit-backdrop-filter: none;
