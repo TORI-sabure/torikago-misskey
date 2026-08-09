@@ -331,7 +331,12 @@ function onReact(ctx: Parameters<Misskey.Channels['chatUser']['events']['react']
 function onUnreact(ctx: Parameters<Misskey.Channels['chatUser']['events']['unreact']>[0] | Parameters<Misskey.Channels['chatRoom']['events']['unreact']>[0]) {
 	const message = messages.value.find(m => m.id === ctx.messageId);
 	if (message) {
-		const index = message.reactions.findIndex(r => r.reaction === ctx.reaction && r.user.id === ctx.user!.id);
+		// A chatUser unreact event does not include the reacting user. In a 1:1
+		// chat it can be derived from the message author and the other participant.
+		const userId = room.value == null
+			? (message.fromUserId === $i.id ? user.value!.id : $i.id)
+			: ctx.user!.id;
+		const index = message.reactions.findIndex(r => r.reaction === ctx.reaction && r.user.id === userId);
 		if (index !== -1) {
 			message.reactions.splice(index, 1);
 		}
