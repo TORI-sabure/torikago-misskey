@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <PageWithHeader v-model:tab="src" :actions="headerActions" :tabs="$i ? headerTabs : headerTabsWhenNotLogin" :swipable="true" :displayMyAvatar="true" :canOmitTitle="true">
 	<div class="_spacer" style="--MI_SPACER-w: 800px;">
 		<MkTip v-if="isBasicTimeline(src)" :k="`tl.${src}`" style="margin-bottom: var(--MI-margin);">
-			{{ (i18n.ts._timelineDescription as Record<string, string>)[src] }}
+			{{ src === 'mutual' ? mutualTimelineText.description : i18n.ts._timelineDescription[src] }}
 		</MkTip>
 		<MkPostForm v-if="prefer.r.showFixedPostForm.value" :class="$style.postForm" class="_panel" fixed style="margin-bottom: var(--MI-margin);"/>
 		<MkStreamingNotesTimeline
@@ -45,8 +45,58 @@ import { deepMerge } from '@/utility/merge.js';
 import { miLocalStorage } from '@/local-storage.js';
 import { availableBasicTimelines, hasWithReplies, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
 import { prefer } from '@/preferences.js';
+import { lang } from '@@/js/config.js';
 
 const tlComponent = useTemplateRef('tlComponent');
+
+const mutualTimelineTexts: Record<string, { title: string; description: string }> = {
+	'en-US': {
+		title: 'Mutual',
+		description: 'The mutual timeline shows posts from accounts that you follow and that also follow you back (mutual accounts).',
+	},
+	'ja-JP': {
+		title: '相互',
+		description: '相互タイムラインでは、あなたがフォローしており、かつあなたをフォローしているアカウント（相互アカウント）の投稿を見られます。',
+	},
+	'ja-KS': {
+		title: '相互',
+		description: '相互タイムラインでは、あなたがフォローしており、かつあなたをフォローしているアカウント（相互アカウント）の投稿を見られます。',
+	},
+	'ko-KR': {
+		title: '맞팔',
+		description: '상호 타임라인에서는 내가 팔로우하고 있으며 나를 다시 팔로우하는 계정(맞팔 계정)의 게시물을 볼 수 있습니다.',
+	},
+	'ko-GS': {
+		title: '맞팔',
+		description: '상호 타임라인에서는 내가 팔로우하고 있으며 나를 다시 팔로우하는 계정(맞팔 계정)의 게시물을 볼 수 있습니다.',
+	},
+	'zh-CN': {
+		title: '互关',
+		description: '相互时间线会显示你已关注且也关注了你的账号（互相关注账号）的帖子。',
+	},
+	'zh-TW': {
+		title: '互相追蹤',
+		description: '相互時間軸會顯示你已追蹤且也追蹤你的帳號（互相追蹤帳號）的貼文。',
+	},
+	'de-DE': {
+		title: 'Gegenseitig',
+		description: 'Die gegenseitige Chronik zeigt Beiträge von Konten, denen du folgst und die dir ebenfalls folgen.',
+	},
+	'fr-FR': {
+		title: 'Mutuel',
+		description: 'Le fil mutuel affiche les publications des comptes que vous suivez et qui vous suivent également.',
+	},
+	'es-ES': {
+		title: 'Mutuo',
+		description: 'La línea de tiempo mutua muestra publicaciones de cuentas que sigues y que también te siguen.',
+	},
+	'pt-PT': {
+		title: 'Mútuo',
+		description: 'A cronologia mútua mostra publicações de contas que segues e que também te seguem.',
+	},
+};
+
+const mutualTimelineText = mutualTimelineTexts[lang] ?? mutualTimelineTexts['en-US'];
 
 type TimelinePageSrc = BasicTimelineType | `list:${string}`;
 
@@ -271,7 +321,7 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	iconOnly: true,
 }))), ...availableBasicTimelines().map(tl => ({
 	key: tl,
-	title: (i18n.ts._timelines as Record<string, string>)[tl],
+	title: tl === 'mutual' ? mutualTimelineText.title : i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
 })), {
