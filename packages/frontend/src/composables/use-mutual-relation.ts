@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { computed, reactive } from 'vue';
+import { computed, onScopeDispose, reactive } from 'vue';
 import { misskeyApi } from '@/utility/misskey-api.js';
 import { useStream } from '@/stream.js';
 import { $i } from '@/i.js';
 
 const relations = reactive(new Map<string, boolean>());
 const queued = new Set<string>();
+const active = new Map<string, number>();
 let flushScheduled = false;
 let listening = false;
 const maxCacheSize = 500;
@@ -28,19 +29,25 @@ async function flush(): Promise<void> {
 	for (const userId of userIds) queued.delete(userId);
 	if (userIds.length === 0) return;
 
-	const result = await misskeyApi('users/relation', { userId: userIds });
-	for (const relation of result) {
-		relations.delete(relation.id);
-		relations.set(relation.id, relation.isFollowing && relation.isFollowed);
-	}
-	while (relations.size > maxCacheSize) {
-		const oldest = relations.keys().next().value;
-		if (oldest == null) break;
-		relations.delete(oldest);
-	}
-	if (queued.size > 0) {
-		flushScheduled = true;
-		queueMicrotask(() => void flush());
+	try {
+		const result = await misskeyApi('users/relation', { userId: userIds });
+		for (const relation of result) {
+			relations.delete(relation.id);
+			relations.set(relation.id, relation.isFollowing && relation.isFollowed);
+		}
+		for (const userId of relations.keys()) {
+			if (relations.size <= maxCacheSize) break;
+			if (!active.has(userId)) relations.delete(userId);
+		}
+	} catch {
+		for (const userId of userIds) {
+			if (active.has(userId)) queued.add(userId);
+		}
+	} finally {
+		if (queued.size > 0) {
+			flushScheduled = true;
+			window.setTimeout(() => void flush(), 5000);
+		}
 	}
 }
 
@@ -54,13 +61,18 @@ function startListening(): void {
 	connection.on('unfollow', onRelationChange);
 
 	window.setInterval(() => {
-		for (const userId of relations.keys()) queueRefresh(userId);
+		for (const userId of active.keys()) queueRefresh(userId);
 	}, 30_000);
 }
 
 export function useMutualRelation(userId: string) {
 	startListening();
+	active.set(userId, (active.get(userId) ?? 0) + 1);
 	if (!relations.has(userId)) queueRefresh(userId);
+	onScopeDispose(() => {
+		const count = (active.get(userId) ?? 1) - 1;
+		if (count <= 0) active.delete(userId);
+		else active.set(userId, count);
+	});
 	return computed(() => relations.get(userId) === true);
 }
-
