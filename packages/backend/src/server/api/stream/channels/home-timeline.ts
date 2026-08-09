@@ -7,7 +7,7 @@ import { Inject, Injectable, Scope } from '@nestjs/common';
 import type { Packed } from '@/misc/json-schema.js';
 import { NoteEntityService } from '@/core/entities/NoteEntityService.js';
 import { NoteStreamingHidingService } from '../NoteStreamingHidingService.js';
-import { UserFollowingService } from '@/core/UserFollowingService.js';
+import { CacheService } from '@/core/CacheService.js';
 import { bindThis } from '@/decorators.js';
 import { isRenotePacked, isQuotePacked } from '@/misc/is-renote.js';
 import type { JsonObject } from '@/misc/json-value.js';
@@ -30,7 +30,7 @@ export class HomeTimelineChannel extends Channel {
 
 		private noteEntityService: NoteEntityService,
 		private noteStreamingHidingService: NoteStreamingHidingService,
-		private userFollowingService: UserFollowingService,
+		private cacheService: CacheService,
 	) {
 		super(request);
 		//this.onNote = this.onNote.bind(this);
@@ -52,8 +52,9 @@ export class HomeTimelineChannel extends Channel {
 		if (this.mutualOnly) {
 			if (note.channelId) return;
 			if (!isMe) {
+				const authorFollowings = await this.cacheService.userFollowingsCache.fetch(note.userId);
 				const isMutual = Object.hasOwn(this.following, note.userId)
-					&& await this.userFollowingService.isFollowing(note.userId, this.user!.id);
+					&& Object.hasOwn(authorFollowings, this.user!.id);
 				if (!isMutual) return;
 			}
 		}
