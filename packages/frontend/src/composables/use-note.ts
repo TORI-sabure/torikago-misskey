@@ -37,6 +37,7 @@ import { notePage } from '@/filters/note.js';
 import type { DI as DIType } from '@/di.js';
 import type { ExtractInjectedType } from '@/types/misc.js';
 import type { MenuItem } from '@/types/menu.js';
+import { createReaction } from '@/utility/create-reaction.js';
 
 export interface UseNoteProps {
 	note: Misskey.entities.Note;
@@ -249,10 +250,8 @@ export function useNote(
 		if (appearNote.reactionAcceptance === 'likeOnly') {
 			sound.playMisskeySfx('reaction');
 			if (props.mock) return;
-			misskeyApi('notes/reactions/create', {
-				noteId: appearNote.id,
-				reaction: '❤️',
-			}).then(() => {
+			createReaction(appearNote.id, '❤️').then((created) => {
+				if (!created) return;
 				noteEvents.emit(`reacted:${appearNote.id}`, { userId: $i!.id, reaction: '❤️' });
 			});
 			if (els.reactButton != null && els.reactButton.value != null && prefer.s.animation) {
@@ -279,10 +278,8 @@ export function useNote(
 					if (createReactionMock) createReactionMock(reaction);
 					return;
 				}
-				misskeyApi('notes/reactions/create', {
-					noteId: appearNote.id,
-					reaction: reaction,
-				}).then(() => {
+				createReaction(appearNote.id, reaction).then((created) => {
+					if (!created) return;
 					noteEvents.emit(`reacted:${appearNote.id}`, { userId: $i!.id, reaction: reaction });
 				});
 				if (appearNote.text && appearNote.text.length > 100 && (Date.now() - new Date(appearNote.createdAt).getTime() < 1000 * 3)) {
@@ -298,10 +295,8 @@ export function useNote(
 		if (!isLoggedIn) return;
 		showMovedDialog();
 		sound.playMisskeySfx('reaction');
-		misskeyApi('notes/reactions/create', {
-			noteId: appearNote.id,
-			reaction: reaction,
-		}).then(() => {
+		createReaction(appearNote.id, reaction).then((created) => {
+			if (!created) return;
 			noteEvents.emit(`reacted:${appearNote.id}`, {
 				userId: $i!.id,
 				reaction: reaction,

@@ -8,6 +8,8 @@ import { Endpoint } from '@/server/api/endpoint-base.js';
 import { GetterService } from '@/server/api/GetterService.js';
 import { ReactionService } from '@/core/ReactionService.js';
 import { ApiError } from '../../../error.js';
+import { normalizeDislikedEmoji } from '@/misc/normalize-disliked-emoji.js';
+import { CacheService } from '@/core/CacheService.js';
 
 export const meta = {
 	tags: ['reactions', 'notes'],
@@ -42,6 +44,12 @@ export const meta = {
 			code: 'CANNOT_REACT_TO_RENOTE',
 			id: 'eaccdc08-ddef-43fe-908f-d108faad57f5',
 		},
+
+		reactionIsDisliked: {
+			message: 'The note author has marked this emoji as disliked.',
+			code: 'REACTION_IS_DISLIKED',
+			id: 'fd49ae49-6d44-47fb-a57a-b1d21340bd75',
+		},
 	},
 } as const;
 
@@ -50,6 +58,7 @@ export const paramDef = {
 	properties: {
 		noteId: { type: 'string', format: 'misskey:id' },
 		reaction: { type: 'string' },
+		overrideDislikedEmoji: { type: 'boolean', default: false },
 	},
 	required: ['noteId', 'reaction'],
 } as const;
@@ -57,6 +66,7 @@ export const paramDef = {
 @Injectable()
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export
 	constructor(
+		private cacheService: CacheService,
 		private getterService: GetterService,
 		private reactionService: ReactionService,
 	) {
@@ -65,6 +75,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				if (err.id === '9725d0ce-ba28-4dde-95a7-2cbb2c15de24') throw new ApiError(meta.errors.noSuchNote);
 				throw err;
 			});
+			if (!ps.overrideDislikedEmoji && note.userId !== me.id) {
+				const profile = await this.cacheService.userProfileCache.fetch(note.userId);
+				const reaction = normalizeDislikedEmoji(ps.reaction);
+				if (profile?.dislikedEmojis.some(emoji => normalizeDislikedEmoji(emoji) === reaction)) {
+					throw new ApiError(meta.errors.reactionIsDisliked);
+				}
+			}
 			await this.reactionService.create(me, note, ps.reaction).catch(err => {
 				if (err.id === '51c42bb4-931a-456b-bff7-e5a8a70dd298') throw new ApiError(meta.errors.alreadyReacted);
 				if (err.id === 'e70412a4-7197-4726-8e74-f3e0deb92aa7') throw new ApiError(meta.errors.youHaveBeenBlocked);

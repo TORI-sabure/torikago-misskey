@@ -50,6 +50,18 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</SearchMarker>
 
 			<SearchMarker
+				:label="i18n.ts.dislikedEmojis"
+				:keywords="['emoji', 'reaction']"
+			>
+				<MkFolder>
+					<template #icon><i class="ti ti-mood-sad"></i></template>
+					<template #label>{{ i18n.ts.dislikedEmojis }}</template>
+
+					<XDislikedEmojis/>
+				</MkFolder>
+			</SearchMarker>
+
+			<SearchMarker
 				:label="i18n.ts.emojiMute"
 				:keywords="['emoji', 'mute', 'hide']"
 			>
@@ -175,6 +187,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 import { ref, computed, watch, markRaw } from 'vue';
 import * as Misskey from 'misskey-js';
 import XEmojiMute from './mute-block.emoji-mute.vue';
+import XDislikedEmojis from './mute-block.disliked-emojis.vue';
 import XInstanceMute from './mute-block.instance-mute.vue';
 import XWordMute from './mute-block.word-mute.vue';
 import MkPagination from '@/components/MkPagination.vue';

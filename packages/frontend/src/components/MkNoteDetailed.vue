@@ -182,6 +182,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<button ref="menuButton" class="_button" :class="$style.noteFooterButton" @mousedown.prevent="showMenu()">
 					<i class="ti ti-dots"></i>
 				</button>
+				<span v-if="isMutualAuthor" :class="$style.mutualBadge" :title="i18n.ts.mutualFollow"><i class="ti ti-arrows-exchange"></i></span>
 			</footer>
 		</article>
 		<div :class="$style.tabs">
@@ -252,6 +253,7 @@ import { misskeyApi } from '@/utility/misskey-api.js';
 import number from '@/filters/number.js';
 import { DI } from '@/di.js';
 import type { Keymap } from '@/utility/hotkey.js';
+import { useMutualRelation } from '@/composables/use-mutual-relation.js';
 
 // コンポーネント外部の依存関係
 import MkNoteSub from '@/components/MkNoteSub.vue';
@@ -325,6 +327,8 @@ const {
 }, {
 	inChannel,
 });
+
+const isMutualAuthor = useMutualRelation(appearNote.userId);
 
 // provide
 provide(DI.mfmEmojiReactCallback, reactViaMfmEmoji);
@@ -611,6 +615,11 @@ const keymap = {
 	margin: 16px 0;
 	opacity: 0.7;
 	font-size: 0.9em;
+}
+
+.mutualBadge {
+	margin-left: 8px;
+	color: var(--MI_THEME-accent);
 }
 
 .noteFooterButton {
