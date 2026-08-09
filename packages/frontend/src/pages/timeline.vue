@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <PageWithHeader v-model:tab="src" :actions="headerActions" :tabs="$i ? headerTabs : headerTabsWhenNotLogin" :swipable="true" :displayMyAvatar="true" :canOmitTitle="true">
 	<div class="_spacer" style="--MI_SPACER-w: 800px;">
 		<MkTip v-if="isBasicTimeline(src)" :k="`tl.${src}`" style="margin-bottom: var(--MI-margin);">
-			{{ src === 'mutual' ? forkT('mutualTimelineDescription') : i18n.ts._timelineDescription[src] }}
+			{{ (i18n.ts._timelineDescription as Record<string, string>)[src] }}
 		</MkTip>
 		<MkPostForm v-if="prefer.r.showFixedPostForm.value" :class="$style.postForm" class="_panel" fixed style="margin-bottom: var(--MI-margin);"/>
 		<MkStreamingNotesTimeline
@@ -45,7 +45,6 @@ import { deepMerge } from '@/utility/merge.js';
 import { miLocalStorage } from '@/local-storage.js';
 import { availableBasicTimelines, hasWithReplies, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
 import { prefer } from '@/preferences.js';
-import { forkT } from '@/fork-i18n.js';
 
 const tlComponent = useTemplateRef('tlComponent');
 
@@ -272,7 +271,7 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	iconOnly: true,
 }))), ...availableBasicTimelines().map(tl => ({
 	key: tl,
-	title: tl === 'mutual' ? forkT('mutualTimeline') : i18n.ts._timelines[tl],
+	title: (i18n.ts._timelines as Record<string, string>)[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
 })), {
