@@ -6,6 +6,15 @@
 import { lang } from '@@/js/config.js';
 
 const forkTranslations = {
+	mutualTimeline: {
+		'en-US': 'Mutual',
+		'ja-JP': '相互',
+		'ja-KS': '相互',
+		'ko-KR': '맞팔',
+		'ko-GS': '맞팔',
+		'zh-CN': '互关',
+		'zh-TW': '互相追蹤',
+	},
 	mutualTimelineDescription: {
 		'en-US': 'The mutual timeline shows posts from accounts that you follow and that also follow you back (mutual accounts).',
 		'ja-JP': '相互タイムラインでは、あなたがフォローしており、かつあなたをフォローしているアカウント（相互アカウント）の投稿を見られます。',
