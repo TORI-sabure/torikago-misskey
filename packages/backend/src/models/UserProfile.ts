@@ -237,6 +237,12 @@ export class MiUserProfile {
 	})
 	public hardMutedWords: (string[] | string)[];
 
+	@Column('varchar', {
+		array: true,
+		default: '{}',
+	})
+	public dislikedEmojis: string[];
+
 	@Column('jsonb', {
 		default: [],
 		comment: 'List of instances muted by the user.',
