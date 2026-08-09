@@ -96,7 +96,7 @@ const mutualTimelineTexts: Record<string, { title: string; description: string }
 	},
 };
 
-const mutualTimelineText = mutualTimelineTexts[lang] ?? mutualTimelineTexts['en-US'];
+const mutualTimelineText = mutualTimelineTexts[lang] ?? mutualTimelineTexts['en-US']!;
 
 type TimelinePageSrc = BasicTimelineType | `list:${string}`;
 
