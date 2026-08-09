@@ -38,7 +38,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			<div v-if="iAmAdmin" :class="$style.adminPermissions">
 				<div :class="$style.adminPermissionsHeader"><b>{{ i18n.ts.adminPermission }}</b></div>
 				<div class="_gaps_s">
-					<MkSwitch v-for="kind in Object.keys(permissionSwitchesForAdmin)" :key="kind" v-model="permissionSwitchesForAdmin[kind as keyof typeof permissionSwitchesForAdmin]">{{ i18n.ts._permissions[kind as keyof typeof permissionSwitchesForAdmin] }}</MkSwitch>
+					<MkSwitch v-for="kind in Object.keys(permissionSwitchesForAdmin)" :key="kind" v-model="permissionSwitchesForAdmin[kind as keyof typeof permissionSwitchesForAdmin]">{{ permissionLabel(kind as keyof typeof permissionSwitchesForAdmin) }}</MkSwitch>
 				</div>
 			</div>
 		</div>
@@ -56,6 +56,28 @@ import MkInfo from './MkInfo.vue';
 import MkModalWindow from '@/components/MkModalWindow.vue';
 import { i18n } from '@/i18n.js';
 import { iAmAdmin } from '@/i.js';
+import { lang } from '@@/js/config.js';
+
+const dislikedEmojiPermissionLabels: Record<string, string> = {
+	'en-US': 'Manage disliked emojis',
+	'ja-JP': '苦手な絵文字を操作する',
+	'ja-KS': '苦手な絵文字を操作する',
+	'ko-KR': '싫어하는 이모지 관리',
+	'ko-GS': '싫어하는 이모지 관리',
+	'zh-CN': '管理不喜欢的表情符号',
+	'zh-TW': '管理不喜歡的表情符號',
+	'de-DE': 'Ungeliebte Emojis verwalten',
+	'fr-FR': 'Gérer les émojis indésirables',
+	'es-ES': 'Gestionar emojis no deseados',
+	'pt-PT': 'Gerir emojis indesejados',
+};
+
+function permissionLabel(kind: (typeof Misskey.permissions)[number]): string {
+	if (kind === 'write:admin:disliked-emojis') {
+		return dislikedEmojiPermissionLabels[lang] ?? dislikedEmojiPermissionLabels['en-US']!;
+	}
+	return i18n.ts._permissions[kind];
+}
 
 const props = withDefaults(defineProps<{
 	title?: string | null;
