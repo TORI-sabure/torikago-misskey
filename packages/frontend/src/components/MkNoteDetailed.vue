@@ -182,7 +182,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<button ref="menuButton" class="_button" :class="$style.noteFooterButton" @mousedown.prevent="showMenu()">
 					<i class="ti ti-dots"></i>
 				</button>
-				<span v-if="isMutualAuthor" :class="$style.mutualBadge" :title="i18n.ts.mutualFollow"><i class="ti ti-arrows-exchange"></i></span>
+				<span v-if="isMutualAuthor" :class="$style.mutualBadge" :title="mutualAccountLabel"><i class="ti ti-arrows-exchange"></i></span>
 			</footer>
 		</article>
 		<div :class="$style.tabs">
@@ -254,6 +254,7 @@ import number from '@/filters/number.js';
 import { DI } from '@/di.js';
 import type { Keymap } from '@/utility/hotkey.js';
 import { useMutualRelation } from '@/composables/use-mutual-relation.js';
+import { lang } from '@@/js/config.js';
 
 // コンポーネント外部の依存関係
 import MkNoteSub from '@/components/MkNoteSub.vue';
@@ -275,6 +276,21 @@ const props = withDefaults(defineProps<{
 }>(), {
 	initialTab: 'replies',
 });
+
+const mutualAccountLabels: Record<string, string> = {
+	'en-US': 'Mutual account',
+	'ja-JP': '相互アカウント',
+	'ja-KS': '相互アカウント',
+	'ko-KR': '맞팔 계정',
+	'ko-GS': '맞팔 계정',
+	'zh-CN': '互关账号',
+	'zh-TW': '互相追蹤帳號',
+	'de-DE': 'Gegenseitiges Konto',
+	'fr-FR': 'Compte mutuel',
+	'es-ES': 'Cuenta mutua',
+	'pt-PT': 'Conta mútua',
+};
+const mutualAccountLabel = mutualAccountLabels[lang] ?? mutualAccountLabels['en-US']!;
 
 // 周辺コンテキストのインジェクト
 const inChannel = inject(DI.inChannel, null);
