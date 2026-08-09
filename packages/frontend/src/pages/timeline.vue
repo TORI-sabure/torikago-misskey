@@ -272,7 +272,7 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	iconOnly: true,
 }))), ...availableBasicTimelines().map(tl => ({
 	key: tl,
-	title: tl === 'mutual' ? i18n.ts.mutualFollow : i18n.ts._timelines[tl],
+	title: tl === 'mutual' ? forkT('mutualTimeline') : i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
 })), {
