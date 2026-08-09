@@ -27,17 +27,21 @@ const dislikedEmojiWarnings: Record<string, string> = {
 };
 const dislikedEmojiWarning = dislikedEmojiWarnings[lang] ?? dislikedEmojiWarnings['en-US']!;
 
+export async function confirmDislikedEmojiReaction(): Promise<boolean> {
+	const { canceled } = await os.confirm({
+		type: 'warning',
+		text: dislikedEmojiWarning,
+	});
+	return !canceled;
+}
+
 export async function createReaction(noteId: string, reaction: string): Promise<boolean> {
 	try {
 		await createReactionApi('notes/reactions/create', { noteId, reaction });
 		return true;
 	} catch (err) {
 		if (typeof err !== 'object' || err == null || !('code' in err) || err.code !== 'REACTION_IS_DISLIKED') throw err;
-		const { canceled } = await os.confirm({
-			type: 'warning',
-			text: dislikedEmojiWarning,
-		});
-		if (canceled) return false;
+		if (!await confirmDislikedEmojiReaction()) return false;
 		await createReactionApi('notes/reactions/create', {
 			noteId,
 			reaction,
