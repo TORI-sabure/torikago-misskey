@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <XColumn :menu="menu" :column="column" :isStacked="isStacked" :refresher="async () => { await timeline?.reloadTimeline() }">
 	<template #header>
 		<i v-if="column.tl != null" :class="basicTimelineIconClass(column.tl)"></i>
-		<span style="margin-left: 8px;">{{ column.name || (column.tl ? i18n.ts._timelines[column.tl] : null) || i18n.ts._deck._columns.tl }}</span>
+		<span style="margin-left: 8px;">{{ column.name || (column.tl ? timelineLabel(column.tl) : null) || i18n.ts._deck._columns.tl }}</span>
 	</template>
 
 	<div v-if="!isAvailableBasicTimeline(column.tl)" :class="$style.disabled">
@@ -44,6 +44,7 @@ import * as os from '@/os.js';
 import { i18n } from '@/i18n.js';
 import { hasWithReplies, isAvailableBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
 import { soundSettingsButton } from '@/ui/deck/tl-note-notification.js';
+import { lang } from '@@/js/config.js';
 
 const props = defineProps<{
 	column: Column;
@@ -57,6 +58,26 @@ const withRenotes = ref(props.column.withRenotes ?? true);
 const withReplies = ref(props.column.withReplies ?? false);
 const withSensitive = ref(props.column.withSensitive ?? true);
 const onlyFiles = ref(props.column.onlyFiles ?? false);
+
+const mutualTimelineLabels: Record<string, string> = {
+	'en-US': 'Mutual',
+	'ja-JP': '相互',
+	'ja-KS': '相互',
+	'ko-KR': '맞팔',
+	'ko-GS': '맞팔',
+	'zh-CN': '互关',
+	'zh-TW': '互相追蹤',
+	'de-DE': 'Gegenseitig',
+	'fr-FR': 'Mutuel',
+	'es-ES': 'Mutuo',
+	'pt-PT': 'Mútuo',
+};
+
+function timelineLabel(timeline: NonNullable<Column['tl']>): string {
+	return timeline === 'mutual'
+		? (mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!)
+		: i18n.ts._timelines[timeline];
+}
 
 watch(withRenotes, v => {
 	updateColumn(props.column.id, {
@@ -96,6 +117,8 @@ async function setType() {
 	const { canceled, result: src } = await os.select({
 		title: i18n.ts.timeline,
 		items: [{
+			value: 'mutual', label: mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!,
+		}, {
 			value: 'home', label: i18n.ts._timelines.home,
 		}, {
 			value: 'local', label: i18n.ts._timelines.local,

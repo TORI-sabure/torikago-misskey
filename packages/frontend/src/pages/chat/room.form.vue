@@ -327,9 +327,13 @@ onBeforeUnmount(() => {
 	field-sizing: content;
 }
 
-// TORIKAGO PATCH: iOS WebKit can hide textarea text while editing when
-// backdrop-filter is active. Remove this block when Misskey fixes it upstream.
+// TORIKAGO PATCH: iOS WebKit can fail to repaint or clip the chat textarea
+// while editing. Remove this block when Misskey fixes it upstream.
 @supports (-webkit-touch-callout: none) {
+	.root {
+		overflow: visible;
+	}
+
 	.textarea:global(._acrylic) {
 		-webkit-backdrop-filter: none;
 		backdrop-filter: none;
