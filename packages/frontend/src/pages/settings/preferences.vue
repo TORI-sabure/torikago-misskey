@@ -872,7 +872,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue';
-import { lang, langs } from '@@/js/config.js';
+import { lang as currentLang, langs } from '@@/js/config.js';
 import * as Misskey from 'misskey-js';
 import MkSwitch from '@/components/MkSwitch.vue';
 import MkSelect from '@/components/MkSelect.vue';
@@ -913,7 +913,7 @@ const mutualAccountBadgeLabels: Record<string, string> = {
 	'es-ES': 'Mostrar una marca en las notas de cuentas mutuas',
 	'pt-PT': 'Mostrar uma marca nas notas de contas mútuas',
 };
-const mutualAccountBadgeLabel = mutualAccountBadgeLabels[lang] ?? mutualAccountBadgeLabels['en-US']!;
+const mutualAccountBadgeLabel = mutualAccountBadgeLabels[currentLang] ?? mutualAccountBadgeLabels['en-US']!;
 
 const $i = ensureSignin();
 
