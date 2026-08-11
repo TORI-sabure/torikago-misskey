@@ -182,7 +182,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<button ref="menuButton" class="_button" :class="$style.noteFooterButton" @mousedown.prevent="showMenu()">
 					<i class="ti ti-dots"></i>
 				</button>
-				<span v-if="isMutualAuthor" :class="$style.mutualBadge" :title="mutualAccountLabel"><i class="ti ti-arrows-exchange"></i></span>
+				<span v-if="showMutualAccountBadge && isMutualAuthor" :class="$style.mutualBadge" :title="mutualAccountLabel"><i class="ti ti-arrows-exchange"></i></span>
 			</footer>
 		</article>
 		<div :class="$style.tabs">
@@ -345,6 +345,7 @@ const {
 });
 
 const isMutualAuthor = useMutualRelation(appearNote.userId);
+const showMutualAccountBadge = prefer.r.showMutualAccountBadge;
 
 // provide
 provide(DI.mfmEmojiReactCallback, reactViaMfmEmoji);
