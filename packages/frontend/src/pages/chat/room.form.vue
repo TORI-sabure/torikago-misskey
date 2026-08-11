@@ -224,6 +224,12 @@ function clear() {
 	text.value = '';
 	file.value = null;
 	deleteDraft();
+
+	// iOS Safari can preserve the previous textarea scroll position after clearing.
+	// Reset it after Vue applies the empty value so the placeholder is visible.
+	void nextTick(() => {
+		if (textareaEl.value != null) textareaEl.value.scrollTop = 0;
+	});
 }
 
 function saveDraft() {
