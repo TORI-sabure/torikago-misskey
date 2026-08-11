@@ -327,11 +327,19 @@ onBeforeUnmount(() => {
 	field-sizing: content;
 }
 
-// TORIKAGO PATCH: iOS WebKit can fail to repaint or clip the chat textarea
-// while editing. Remove this block when Misskey fixes it upstream.
+// TORIKAGO PATCH: iOS WebKit can fail to repaint, clip, or incorrectly resize
+// the chat textarea. Remove this block when Misskey fixes it upstream.
 @supports (-webkit-touch-callout: none) {
 	.root {
 		overflow: visible;
+	}
+
+	.textarea {
+		// field-sizing: content can leave a partially painted placeholder after
+		// the message is cleared. Keep a stable editing area on iOS instead.
+		height: 80px;
+		field-sizing: fixed;
+		overflow-y: auto;
 	}
 
 	.textarea:global(._acrylic) {
