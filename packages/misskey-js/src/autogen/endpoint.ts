@@ -1,7 +1,3 @@
-Exit code: 0
-Wall time: 1.2 seconds
-Total output lines: 1130
-Output:
 import type {
 	EmptyRequest,
 	EmptyResponse,
