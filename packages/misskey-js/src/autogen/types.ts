@@ -1,7 +1,3 @@
-Exit code: 0
-Wall time: 1.1 seconds
-Total output lines: 32366
-Output:
 /* eslint @typescript-eslint/naming-convention: 0 */
 /* eslint @typescript-eslint/no-explicit-any: 0 */
 
