@@ -1,7 +1,3 @@
-Exit code: 0
-Wall time: 1.1 seconds
-Total output lines: 4943
-Output:
 import type { SwitchCaseResponseType } from '../api.js';
 import type { Endpoints } from '../api.types.js';
 
