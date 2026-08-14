@@ -197,7 +197,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 									</MkPreferenceContainer>
 								</SearchMarker>
 
-								<SearchMarker :keywords="['mutual', 'follow', 'badge', 'mark']">
+								<SearchMarker :keywords="['mutual', 'follow', 'account', 'badge', 'mark', '相互', 'ユーザー', 'ノート', 'マーク', '表示']">
 									<MkPreferenceContainer k="showMutualAccountBadge">
 										<MkSwitch v-model="showMutualAccountBadge">
 											<template #label><SearchLabel>{{ mutualAccountBadgeLabel }}</SearchLabel></template>

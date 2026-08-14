@@ -52,9 +52,17 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const message = await this.chatService.findMessageById(ps.messageId);
 			if (message == null) throw new ApiError(meta.errors.noSuchMessage);
 
-			// Only one-to-one direct messages have a recipient whose preference can
-			// be checked. Room chat reactions intentionally keep their existing flow.
-			if (!ps.overrideDislikedEmoji && message.toUserId === me.id) {
+			// The recipient of a 1:1 message, and members of a group chat, can be
+			// warned about an emoji the message author has marked as disliked.
+			// Check room membership first so this preference is never revealed to a
+			// user who is not allowed to react to the message.
+			let canCheckDislikedEmoji = message.toUserId === me.id;
+			if (!canCheckDislikedEmoji && message.toRoomId != null) {
+				const room = await this.chatService.findRoomById(message.toRoomId);
+				canCheckDislikedEmoji = room != null && await this.chatService.isRoomMember(room, me.id);
+			}
+
+			if (!ps.overrideDislikedEmoji && message.fromUserId !== me.id && canCheckDislikedEmoji) {
 				const profile = await this.cacheService.userProfileCache.fetch(message.fromUserId);
 				const reaction = normalizeDislikedEmoji(ps.reaction);
 				if (profile.dislikedEmojis.some(emoji => normalizeDislikedEmoji(emoji) === reaction)) {

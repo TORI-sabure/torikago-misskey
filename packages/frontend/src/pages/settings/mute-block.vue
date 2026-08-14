@@ -51,7 +51,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 			<SearchMarker
 				:label="dislikedEmojiTitle"
-				:keywords="['emoji', 'reaction']"
+				:keywords="['emoji', 'reaction', 'disliked', '苦手', '絵文字']"
 			>
 				<MkFolder>
 					<template #icon><i class="ti ti-mood-sad"></i></template>

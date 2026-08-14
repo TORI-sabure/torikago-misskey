@@ -738,6 +738,17 @@ export class UserFollowingService implements OnModuleInit {
 	}
 
 	@bindThis
+	public async getMutualFolloweeIds(userId: MiUser['id']) {
+		const followings = await this.followingsRepository.createQueryBuilder('following')
+			.select('following.followeeId', 'followeeId')
+			.innerJoin('following', 'reverseFollowing', 'reverseFollowing.followerId = following.followeeId AND reverseFollowing.followeeId = :userId', { userId })
+			.where('following.followerId = :userId', { userId })
+			.getRawMany<{ followeeId: MiUser['id'] }>();
+
+		return followings.map(following => following.followeeId);
+	}
+
+	@bindThis
 	public isFollowing(followerId: MiUser['id'], followeeId: MiUser['id']) {
 		return this.followingsRepository.exists({
 			where: {

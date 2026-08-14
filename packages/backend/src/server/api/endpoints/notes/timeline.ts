@@ -143,12 +143,17 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	}
 
 	private async getFromDb(ps: { untilId: string | null; sinceId: string | null; limit: number; includeMyRenotes: boolean; includeRenotedMyNotes: boolean; includeLocalRenotes: boolean; withFiles: boolean; withRenotes: boolean; mutualOnly: boolean; }, me: MiLocalUser) {
-		const followees = await this.userFollowingService.getFollowees(me.id);
+		// 相互TLは先に対象ユーザーを絞る。ノート表を広く走査してフォロー関係を結合するより、
+		// ホームTLと同様に投稿者IDで絞るほうが、対象投稿が古い・存在しない場合でも高速になる。
+		const mutualFolloweeIds = ps.mutualOnly
+			? await this.userFollowingService.getMutualFolloweeIds(me.id)
+			: [];
+		const followees = ps.mutualOnly ? [] : await this.userFollowingService.getFollowees(me.id);
 
-		const mutingChannelIds = await this.channelMutingService
+		const mutingChannelIds = ps.mutualOnly ? [] : await this.channelMutingService
 			.list({ requestUserId: me.id }, { idOnly: true })
 			.then(x => x.map(x => x.id));
-		const followingChannelIds = await this.channelFollowingService
+		const followingChannelIds = ps.mutualOnly ? [] : await this.channelFollowingService
 			.list({ requestUserId: me.id }, { idOnly: true })
 			.then(x => x.map(x => x.id).filter(x => !mutingChannelIds.includes(x)));
 
@@ -162,13 +167,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 		if (ps.mutualOnly) {
 			query
-				.leftJoin('following', 'following', 'following.followeeId = note.userId AND following.followerId = :meId', { meId: me.id })
-				.leftJoin('following', 'reverseFollowing', 'reverseFollowing.followerId = note.userId AND reverseFollowing.followeeId = :meId', { meId: me.id })
 				.andWhere('note.channelId IS NULL')
-				.andWhere(new Brackets(qb => {
-					qb.where('note.userId = :meId', { meId: me.id });
-					qb.orWhere('following.id IS NOT NULL AND reverseFollowing.id IS NOT NULL');
-				}));
+				.andWhere('note.userId IN (:...mutualUserIds)', { mutualUserIds: [me.id, ...mutualFolloweeIds] });
 		} else {
 
 		if (followees.length > 0 && followingChannelIds.length > 0) {
