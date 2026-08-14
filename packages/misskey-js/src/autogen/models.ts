@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 1 seconds
-Output:
 import { components } from './types.js';
 export type Error = components['schemas']['Error'];
 export type UserLite = components['schemas']['UserLite'];
