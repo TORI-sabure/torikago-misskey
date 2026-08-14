@@ -1,3 +1,6 @@
+Exit code: 0
+Wall time: 1 seconds
+Output:
 import { components } from './types.js';
 export type Error = components['schemas']['Error'];
 export type UserLite = components['schemas']['UserLite'];
@@ -69,3 +72,4 @@ export type ChatMessageLiteForRoom = components['schemas']['ChatMessageLiteForRo
 export type ChatRoom = components['schemas']['ChatRoom'];
 export type ChatRoomInvitation = components['schemas']['ChatRoomInvitation'];
 export type ChatRoomMembership = components['schemas']['ChatRoomMembership'];
+
