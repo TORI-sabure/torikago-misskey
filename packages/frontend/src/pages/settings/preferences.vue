@@ -197,6 +197,14 @@ SPDX-License-Identifier: AGPL-3.0-only
 									</MkPreferenceContainer>
 								</SearchMarker>
 
+								<SearchMarker :keywords="['mutual', 'follow', 'badge', 'mark']">
+									<MkPreferenceContainer k="showMutualAccountBadge">
+										<MkSwitch v-model="showMutualAccountBadge">
+											<template #label><SearchLabel>{{ mutualAccountBadgeLabel }}</SearchLabel></template>
+										</MkSwitch>
+									</MkPreferenceContainer>
+								</SearchMarker>
+
 								<SearchMarker :keywords="['footer', 'action', 'clip', 'show']">
 									<MkPreferenceContainer k="showClipButtonInNoteFooter">
 										<MkSwitch v-model="showClipButtonInNoteFooter">
@@ -864,7 +872,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue';
-import { langs } from '@@/js/config.js';
+import { lang as currentLang, langs } from '@@/js/config.js';
 import * as Misskey from 'misskey-js';
 import MkSwitch from '@/components/MkSwitch.vue';
 import MkSelect from '@/components/MkSelect.vue';
@@ -892,6 +900,21 @@ import { ensureSignin } from '@/i.js';
 import { genId } from '@/utility/id.js';
 import { suggestReload } from '@/utility/reload-suggest.js';
 
+const mutualAccountBadgeLabels: Record<string, string> = {
+	'en-US': 'Show a badge on notes from mutual accounts',
+	'ja-JP': '相互ユーザーのノートにマークを表示する',
+	'ja-KS': '相互ユーザーのノートにマークを表示する',
+	'ko-KR': '맞팔 계정의 노트에 배지 표시',
+	'ko-GS': '맞팔 계정의 노트에 배지 표시',
+	'zh-CN': '在互相关注账号的帖子上显示标记',
+	'zh-TW': '在互相追蹤帳號的貼文上顯示標記',
+	'de-DE': 'Bei Beiträgen gegenseitiger Konten eine Markierung anzeigen',
+	'fr-FR': 'Afficher un badge sur les notes des comptes mutuels',
+	'es-ES': 'Mostrar una marca en las notas de cuentas mutuas',
+	'pt-PT': 'Mostrar uma marca nas notas de contas mútuas',
+};
+const mutualAccountBadgeLabel = mutualAccountBadgeLabels[currentLang] ?? mutualAccountBadgeLabels['en-US']!;
+
 const $i = ensureSignin();
 
 const lang = ref(miLocalStorage.getItem('lang'));
@@ -909,6 +932,7 @@ const showClipButtonInNoteFooter = prefer.model('showClipButtonInNoteFooter');
 const collapseRenotes = prefer.model('collapseRenotes');
 const advancedMfm = prefer.model('advancedMfm');
 const showReactionsCount = prefer.model('showReactionsCount');
+const showMutualAccountBadge = prefer.model('showMutualAccountBadge');
 const enableQuickAddMfmFunction = prefer.model('enableQuickAddMfmFunction');
 const forceShowAds = prefer.model('forceShowAds');
 const loadRawImages = prefer.model('loadRawImages');

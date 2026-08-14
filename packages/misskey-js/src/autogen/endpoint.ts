@@ -39,6 +39,10 @@ import type {
 	AdminCaptchaSaveRequest,
 	AdminDeleteAccountRequest,
 	AdminDeleteAllFilesOfAUserRequest,
+	AdminDislikedEmojisAddRequest,
+	AdminDislikedEmojisDeleteRequest,
+	AdminDislikedEmojisListRequest,
+	AdminDislikedEmojisListResponse,
 	AdminDriveFilesRequest,
 	AdminDriveFilesResponse,
 	AdminDriveShowFileRequest,
@@ -422,6 +426,9 @@ import type {
 	IChangePasswordRequest,
 	IClaimAchievementRequest,
 	IDeleteAccountRequest,
+	IDislikedEmojisResponse,
+	IDislikedEmojisAddRequest,
+	IDislikedEmojisDeleteRequest,
 	IExportFollowingRequest,
 	IFavoritesRequest,
 	IFavoritesResponse,
@@ -693,6 +700,9 @@ export type Endpoints = {
 	'admin/captcha/save': { req: AdminCaptchaSaveRequest; res: EmptyResponse };
 	'admin/delete-account': { req: AdminDeleteAccountRequest; res: EmptyResponse };
 	'admin/delete-all-files-of-a-user': { req: AdminDeleteAllFilesOfAUserRequest; res: EmptyResponse };
+	'admin/disliked-emojis/add': { req: AdminDislikedEmojisAddRequest; res: EmptyResponse };
+	'admin/disliked-emojis/delete': { req: AdminDislikedEmojisDeleteRequest; res: EmptyResponse };
+	'admin/disliked-emojis/list': { req: AdminDislikedEmojisListRequest; res: AdminDislikedEmojisListResponse };
 	'admin/drive/clean-remote-files': { req: EmptyRequest; res: EmptyResponse };
 	'admin/drive/cleanup': { req: EmptyRequest; res: EmptyResponse };
 	'admin/drive/files': { req: AdminDriveFilesRequest; res: AdminDriveFilesResponse };
@@ -942,6 +952,9 @@ export type Endpoints = {
 	'i/change-password': { req: IChangePasswordRequest; res: EmptyResponse };
 	'i/claim-achievement': { req: IClaimAchievementRequest; res: EmptyResponse };
 	'i/delete-account': { req: IDeleteAccountRequest; res: EmptyResponse };
+	'i/disliked-emojis': { req: EmptyRequest; res: IDislikedEmojisResponse };
+	'i/disliked-emojis-add': { req: IDislikedEmojisAddRequest; res: EmptyResponse };
+	'i/disliked-emojis-delete': { req: IDislikedEmojisDeleteRequest; res: EmptyResponse };
 	'i/export-antennas': { req: EmptyRequest; res: EmptyResponse };
 	'i/export-blocking': { req: EmptyRequest; res: EmptyResponse };
 	'i/export-clips': { req: EmptyRequest; res: EmptyResponse };

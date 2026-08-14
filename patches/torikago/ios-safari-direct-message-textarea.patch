@@ -1,0 +1,45 @@
+diff --git a/packages/frontend/src/pages/chat/room.form.vue b/packages/frontend/src/pages/chat/room.form.vue
+--- a/packages/frontend/src/pages/chat/room.form.vue
++++ b/packages/frontend/src/pages/chat/room.form.vue
+@@ -223,6 +223,13 @@ function clear() {
+ 	text.value = '';
+ 	file.value = null;
+ 	deleteDraft();
++
++	// iOS Safari can preserve the previous textarea scroll position after clearing.
++	// Reset it after Vue applies the empty value so the placeholder is visible.
++	void nextTick(() => {
++		if (textareaEl.value != null) textareaEl.value.scrollTop = 0;
++	});
+ }
+ 
+ function saveDraft() {
+@@ -327,6 +334,28 @@
+ 	field-sizing: content;
+ }
+ 
++// TORIKAGO PATCH: iOS WebKit can fail to repaint, clip, or incorrectly resize
++// the chat textarea. Remove this block when Misskey fixes it upstream.
++@supports (-webkit-touch-callout: none) {
++	.root {
++		overflow: visible;
++	}
++
++	.textarea {
++		// field-sizing: content can leave a partially painted placeholder after
++		// the message is cleared. Keep a stable editing area on iOS instead.
++		height: 80px;
++		field-sizing: fixed;
++		overflow-y: auto;
++	}
++
++	.textarea:global(._acrylic) {
++		-webkit-backdrop-filter: none;
++		backdrop-filter: none;
++		background: var(--MI_THEME-panel);
++	}
++}
++
+ .footer {
+ 	position: sticky;
+ 	bottom: 0;

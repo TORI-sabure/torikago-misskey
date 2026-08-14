@@ -118,6 +118,7 @@ export const permissions = [
 	'write:admin:account',
 	'read:admin:account',
 	'write:admin:emoji',
+	'write:admin:disliked-emojis',
 	'read:admin:emoji',
 	'write:admin:queue',
 	'read:admin:queue',

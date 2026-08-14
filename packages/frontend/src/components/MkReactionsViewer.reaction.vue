@@ -40,6 +40,7 @@ import { noteEvents } from '@/composables/use-note-capture.js';
 import { mute as muteEmoji, unmute as unmuteEmoji, checkMuted as isEmojiMuted } from '@/utility/emoji-mute.js';
 import { addToEmojiPalette } from '@/utility/emoji-palette.js';
 import { haptic } from '@/utility/haptic.js';
+import { createReaction } from '@/utility/create-reaction.js';
 
 const props = defineProps<{
 	noteId: Misskey.entities.Note['id'];
@@ -102,10 +103,8 @@ async function toggleReaction() {
 				reaction: oldReaction,
 			});
 			if (oldReaction !== props.reaction) {
-				misskeyApi('notes/reactions/create', {
-					noteId: props.noteId,
-					reaction: props.reaction,
-				}).then(() => {
+				createReaction(props.noteId, props.reaction).then((created) => {
+					if (!created) return;
 					const emoji = customEmojisMap.get(emojiName.value);
 					if (emoji == null && getUnicodeEmojiOrNull(props.reaction) == null) {
 						return;
@@ -136,10 +135,8 @@ async function toggleReaction() {
 			return;
 		}
 
-		misskeyApi('notes/reactions/create', {
-			noteId: props.noteId,
-			reaction: props.reaction,
-		}).then(() => {
+		createReaction(props.noteId, props.reaction).then((created) => {
+			if (!created) return;
 			const emoji = customEmojisMap.get(emojiName.value);
 			if (emoji == null && getUnicodeEmojiOrNull(props.reaction) == null) {
 				return;

@@ -157,6 +157,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				<button ref="menuButton" :class="$style.footerButton" class="_button" @mousedown.prevent="showMenu()">
 					<i class="ti ti-dots"></i>
 				</button>
+				<span v-if="showMutualAccountBadge && isMutualAuthor" :class="$style.mutualBadge" :title="mutualAccountLabel"><i class="ti ti-arrows-exchange"></i></span>
 			</footer>
 		</div>
 	</article>
@@ -209,6 +210,8 @@ import { focusPrev, focusNext } from '@/utility/focus.js';
 import number from '@/filters/number.js';
 import { DI } from '@/di.js';
 import type { Keymap } from '@/utility/hotkey.js';
+import { useMutualRelation } from '@/composables/use-mutual-relation.js';
+import { lang } from '@@/js/config.js';
 
 // コンポーネント外部の依存関係
 import MkNoteSub from '@/components/MkNoteSub.vue';
@@ -229,6 +232,21 @@ const props = withDefaults(defineProps<{
 }>(), {
 	mock: false,
 });
+
+const mutualAccountLabels: Record<string, string> = {
+	'en-US': 'Mutual account',
+	'ja-JP': '相互アカウント',
+	'ja-KS': '相互アカウント',
+	'ko-KR': '맞팔 계정',
+	'ko-GS': '맞팔 계정',
+	'zh-CN': '互关账号',
+	'zh-TW': '互相追蹤帳號',
+	'de-DE': 'Gegenseitiges Konto',
+	'fr-FR': 'Compte mutuel',
+	'es-ES': 'Cuenta mutua',
+	'pt-PT': 'Conta mútua',
+};
+const mutualAccountLabel = mutualAccountLabels[lang] ?? mutualAccountLabels['en-US']!;
 
 const emit = defineEmits<{
 	(ev: 'reaction', emoji: string): void;
@@ -297,6 +315,9 @@ const {
 	currentClip,
 	currentAntenna,
 });
+
+const isMutualAuthor = useMutualRelation(appearNote.userId);
+const showMutualAccountBadge = prefer.r.showMutualAccountBadge;
 
 // provide
 provide(DI.mfmEmojiReactCallback, reactViaMfmEmoji);
@@ -681,6 +702,12 @@ const keymap = {
 
 .footer {
 	margin-bottom: -14px;
+}
+
+.mutualBadge {
+	margin-left: auto;
+	align-self: center;
+	color: var(--MI_THEME-accent);
 }
 
 .footerButton {

@@ -73,6 +73,7 @@ import MkReactionIcon from '@/components/MkReactionIcon.vue';
 import { prefer } from '@/preferences.js';
 import { DI } from '@/di.js';
 import { getHTMLElementOrNull } from '@/utility/get-dom-node-or-null.js';
+import { createChatReaction } from '@/utility/create-chat-reaction.js';
 
 const $i = ensureSignin();
 
@@ -87,12 +88,18 @@ const urls = computed(() => props.message.text ? extractUrlFromMfm(mfm.parse(pro
 provide(DI.mfmEmojiReactCallback, (reaction) => {
 	if ($i.policies.chatAvailability !== 'available') return;
 
-	sound.playMisskeySfx('reaction');
-	misskeyApi('chat/messages/react', {
-		messageId: props.message.id,
-		reaction: reaction,
-	});
+	void createReactionWithSound(reaction);
 });
+
+async function createReactionWithSound(reaction: string): Promise<void> {
+	try {
+		if (await createChatReaction(props.message.id, reaction)) {
+			sound.playMisskeySfx('reaction');
+		}
+	} catch (err) {
+		console.error(err);
+	}
+}
 
 function react(ev: PointerEvent) {
 	if ($i.policies.chatAvailability !== 'available') return;
@@ -101,11 +108,7 @@ function react(ev: PointerEvent) {
 	if (!targetEl) return;
 
 	reactionPicker.show(targetEl, null, async (reaction) => {
-		sound.playMisskeySfx('reaction');
-		misskeyApi('chat/messages/react', {
-			messageId: props.message.id,
-			reaction: reaction,
-		});
+		await createReactionWithSound(reaction);
 	});
 }
 
@@ -119,11 +122,7 @@ function onReactionClick(record: Misskey.entities.ChatMessage['reactions'][0]) {
 		});
 	} else {
 		if (!props.message.reactions.some(r => r.user.id === $i.id && r.reaction === record.reaction)) {
-			sound.playMisskeySfx('reaction');
-			misskeyApi('chat/messages/react', {
-				messageId: props.message.id,
-				reaction: record.reaction,
-			});
+			void createReactionWithSound(record.reaction);
 		}
 	}
 }

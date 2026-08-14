@@ -50,6 +50,18 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</SearchMarker>
 
 			<SearchMarker
+				:label="dislikedEmojiTitle"
+				:keywords="['emoji', 'reaction']"
+			>
+				<MkFolder>
+					<template #icon><i class="ti ti-mood-sad"></i></template>
+					<template #label>{{ dislikedEmojiTitle }}</template>
+
+					<XDislikedEmojis/>
+				</MkFolder>
+			</SearchMarker>
+
+			<SearchMarker
 				:label="i18n.ts.emojiMute"
 				:keywords="['emoji', 'mute', 'hide']"
 			>
@@ -175,6 +187,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 import { ref, computed, watch, markRaw } from 'vue';
 import * as Misskey from 'misskey-js';
 import XEmojiMute from './mute-block.emoji-mute.vue';
+import XDislikedEmojis from './mute-block.disliked-emojis.vue';
 import XInstanceMute from './mute-block.instance-mute.vue';
 import XWordMute from './mute-block.word-mute.vue';
 import MkPagination from '@/components/MkPagination.vue';
@@ -192,8 +205,24 @@ import { prefer } from '@/preferences.js';
 import MkFeatureBanner from '@/components/MkFeatureBanner.vue';
 import { Paginator } from '@/utility/paginator.js';
 import { suggestReload } from '@/utility/reload-suggest.js';
+import { lang } from '@@/js/config.js';
 
 const $i = ensureSignin();
+
+const dislikedEmojiTitles: Record<string, string> = {
+	'en-US': 'Disliked emojis',
+	'ja-JP': '苦手な絵文字',
+	'ja-KS': '苦手な絵文字',
+	'ko-KR': '싫어하는 이모지',
+	'ko-GS': '싫어하는 이모지',
+	'zh-CN': '不喜欢的表情符号',
+	'zh-TW': '不喜歡的表情符號',
+	'de-DE': 'Ungeliebte Emojis',
+	'fr-FR': 'Émojis indésirables',
+	'es-ES': 'Emojis no deseados',
+	'pt-PT': 'Emojis indesejados',
+};
+const dislikedEmojiTitle = dislikedEmojiTitles[lang] ?? dislikedEmojiTitles['en-US']!;
 
 const renoteMutingPaginator = markRaw(new Paginator('renote-mute/list', {
 	limit: 10,
