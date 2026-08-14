@@ -158,6 +158,18 @@ type AdminDeleteAccountRequest = operations['admin___delete-account']['requestBo
 type AdminDeleteAllFilesOfAUserRequest = operations['admin___delete-all-files-of-a-user']['requestBody']['content']['application/json'];
 
 // @public (undocumented)
+type AdminDislikedEmojisAddRequest = operations['admin___disliked-emojis___add']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type AdminDislikedEmojisDeleteRequest = operations['admin___disliked-emojis___delete']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type AdminDislikedEmojisListRequest = operations['admin___disliked-emojis___list']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type AdminDislikedEmojisListResponse = operations['admin___disliked-emojis___list']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
 type AdminDriveFilesRequest = operations['admin___drive___files']['requestBody']['content']['application/json'];
 
 // @public (undocumented)
@@ -1575,6 +1587,10 @@ declare namespace entities {
         AdminCaptchaSaveRequest,
         AdminDeleteAccountRequest,
         AdminDeleteAllFilesOfAUserRequest,
+        AdminDislikedEmojisAddRequest,
+        AdminDislikedEmojisDeleteRequest,
+        AdminDislikedEmojisListRequest,
+        AdminDislikedEmojisListResponse,
         AdminDriveFilesRequest,
         AdminDriveFilesResponse,
         AdminDriveShowFileRequest,
@@ -1956,6 +1972,9 @@ declare namespace entities {
         IChangePasswordRequest,
         IClaimAchievementRequest,
         IDeleteAccountRequest,
+        IDislikedEmojisResponse,
+        IDislikedEmojisAddRequest,
+        IDislikedEmojisDeleteRequest,
         IExportFollowingRequest,
         IFavoritesRequest,
         IFavoritesResponse,
@@ -2624,6 +2643,15 @@ type ID = string;
 
 // @public (undocumented)
 type IDeleteAccountRequest = operations['i___delete-account']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type IDislikedEmojisAddRequest = operations['i___disliked-emojis-add']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type IDislikedEmojisDeleteRequest = operations['i___disliked-emojis-delete']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type IDislikedEmojisResponse = operations['i___disliked-emojis']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
 type IExportFollowingRequest = operations['i___export-following']['requestBody']['content']['application/json'];
