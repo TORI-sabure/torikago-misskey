@@ -14,8 +14,8 @@ const createReactionApi = misskeyApi as unknown as (
 
 const dislikedEmojiWarnings: Record<string, string> = {
 	'en-US': 'This emoji appears to be set as an emoji the recipient dislikes. Do you want to continue?',
-	'ja-JP': 'この絵文字は相手の苦手な絵文字に設定されているようです。続行しますか？',
-	'ja-KS': 'この絵文字は相手の苦手な絵文字に設定されているようです。続行しますか？',
+	'ja-JP': 'この絵文字は相手の苦手な絵文字に設定されているようです。\n続行しますか？',
+	'ja-KS': 'このツッコミはなんか相手の苦手なツッコミらしいわ。\n続けるん？',
 	'ko-KR': '이 이모지는 상대방이 싫어하는 이모지로 설정되어 있는 것 같습니다. 계속하시겠습니까?',
 	'ko-GS': '이 이모지는 상대방이 싫어하는 이모지로 설정되어 있는 것 같습니다. 계속하시겠습니까?',
 	'zh-CN': '此表情符号似乎已被对方设为不喜欢的表情符号。要继续吗？',
