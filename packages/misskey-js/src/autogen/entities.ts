@@ -1,7 +1,3 @@
-Exit code: 0
-Wall time: 1.2 seconds
-Total output lines: 678
-Output:
 /* eslint @typescript-eslint/naming-convention: 0 */
 import { operations } from './types.js';
 
