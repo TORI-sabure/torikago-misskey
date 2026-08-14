@@ -1,3 +1,7 @@
+Exit code: 0
+Wall time: 1.2 seconds
+Total output lines: 1130
+Output:
 import type {
 	EmptyRequest,
 	EmptyResponse,
@@ -39,6 +43,10 @@ import type {
 	AdminCaptchaSaveRequest,
 	AdminDeleteAccountRequest,
 	AdminDeleteAllFilesOfAUserRequest,
+	AdminDislikedEmojisAddRequest,
+	AdminDislikedEmojisDeleteRequest,
+	AdminDislikedEmojisListRequest,
+	AdminDislikedEmojisListResponse,
 	AdminDriveFilesRequest,
 	AdminDriveFilesResponse,
 	AdminDriveShowFileRequest,
@@ -422,6 +430,9 @@ import type {
 	IChangePasswordRequest,
 	IClaimAchievementRequest,
 	IDeleteAccountRequest,
+	IDislikedEmojisResponse,
+	IDislikedEmojisAddRequest,
+	IDislikedEmojisDeleteRequest,
 	IExportFollowingRequest,
 	IFavoritesRequest,
 	IFavoritesResponse,
@@ -687,178 +698,7 @@ export type Endpoints = {
 	'admin/announcements/update': { req: AdminAnnouncementsUpdateRequest; res: EmptyResponse };
 	'admin/avatar-decorations/create': { req: AdminAvatarDecorationsCreateRequest; res: AdminAvatarDecorationsCreateResponse };
 	'admin/avatar-decorations/delete': { req: AdminAvatarDecorationsDeleteRequest; res: EmptyResponse };
-	'admin/avatar-decorations/list': { req: AdminAvatarDecorationsListRequest; res: AdminAvatarDecorationsListResponse };
-	'admin/avatar-decorations/update': { req: AdminAvatarDecorationsUpdateRequest; res: EmptyResponse };
-	'admin/captcha/current': { req: EmptyRequest; res: AdminCaptchaCurrentResponse };
-	'admin/captcha/save': { req: AdminCaptchaSaveRequest; res: EmptyResponse };
-	'admin/delete-account': { req: AdminDeleteAccountRequest; res: EmptyResponse };
-	'admin/delete-all-files-of-a-user': { req: AdminDeleteAllFilesOfAUserRequest; res: EmptyResponse };
-	'admin/drive/clean-remote-files': { req: EmptyRequest; res: EmptyResponse };
-	'admin/drive/cleanup': { req: EmptyRequest; res: EmptyResponse };
-	'admin/drive/files': { req: AdminDriveFilesRequest; res: AdminDriveFilesResponse };
-	'admin/drive/show-file': { req: AdminDriveShowFileRequest; res: AdminDriveShowFileResponse };
-	'admin/emoji/add': { req: AdminEmojiAddRequest; res: AdminEmojiAddResponse };
-	'admin/emoji/add-aliases-bulk': { req: AdminEmojiAddAliasesBulkRequest; res: EmptyResponse };
-	'admin/emoji/copy': { req: AdminEmojiCopyRequest; res: AdminEmojiCopyResponse };
-	'admin/emoji/delete': { req: AdminEmojiDeleteRequest; res: EmptyResponse };
-	'admin/emoji/delete-bulk': { req: AdminEmojiDeleteBulkRequest; res: EmptyResponse };
-	'admin/emoji/import-zip': { req: AdminEmojiImportZipRequest; res: EmptyResponse };
-	'admin/emoji/list': { req: AdminEmojiListRequest; res: AdminEmojiListResponse };
-	'admin/emoji/list-remote': { req: AdminEmojiListRemoteRequest; res: AdminEmojiListRemoteResponse };
-	'admin/emoji/remove-aliases-bulk': { req: AdminEmojiRemoveAliasesBulkRequest; res: EmptyResponse };
-	'admin/emoji/set-aliases-bulk': { req: AdminEmojiSetAliasesBulkRequest; res: EmptyResponse };
-	'admin/emoji/set-category-bulk': { req: AdminEmojiSetCategoryBulkRequest; res: EmptyResponse };
-	'admin/emoji/set-license-bulk': { req: AdminEmojiSetLicenseBulkRequest; res: EmptyResponse };
-	'admin/emoji/update': { req: AdminEmojiUpdateRequest; res: EmptyResponse };
-	'admin/federation/delete-all-files': { req: AdminFederationDeleteAllFilesRequest; res: EmptyResponse };
-	'admin/federation/refresh-remote-instance-metadata': { req: AdminFederationRefreshRemoteInstanceMetadataRequest; res: EmptyResponse };
-	'admin/federation/remove-all-following': { req: AdminFederationRemoveAllFollowingRequest; res: EmptyResponse };
-	'admin/federation/update-instance': { req: AdminFederationUpdateInstanceRequest; res: EmptyResponse };
-	'admin/forward-abuse-user-report': { req: AdminForwardAbuseUserReportRequest; res: EmptyResponse };
-	'admin/get-index-stats': { req: EmptyRequest; res: AdminGetIndexStatsResponse };
-	'admin/get-table-stats': { req: EmptyRequest; res: AdminGetTableStatsResponse };
-	'admin/get-user-ips': { req: AdminGetUserIpsRequest; res: AdminGetUserIpsResponse };
-	'admin/invite/create': { req: AdminInviteCreateRequest; res: AdminInviteCreateResponse };
-	'admin/invite/list': { req: AdminInviteListRequest; res: AdminInviteListResponse };
-	'admin/meta': { req: EmptyRequest; res: AdminMetaResponse };
-	'admin/promo/create': { req: AdminPromoCreateRequest; res: EmptyResponse };
-	'admin/queue/clear': { req: AdminQueueClearRequest; res: EmptyResponse };
-	'admin/queue/deliver-delayed': { req: EmptyRequest; res: AdminQueueDeliverDelayedResponse };
-	'admin/queue/inbox-delayed': { req: EmptyRequest; res: AdminQueueInboxDelayedResponse };
-	'admin/queue/jobs': { req: AdminQueueJobsRequest; res: AdminQueueJobsResponse };
-	'admin/queue/pause': { req: AdminQueuePauseRequest; res: EmptyResponse };
-	'admin/queue/promote-jobs': { req: AdminQueuePromoteJobsRequest; res: EmptyResponse };
-	'admin/queue/queue-stats': { req: AdminQueueQueueStatsRequest; res: AdminQueueQueueStatsResponse };
-	'admin/queue/queues': { req: EmptyRequest; res: AdminQueueQueuesResponse };
-	'admin/queue/remove-job': { req: AdminQueueRemoveJobRequest; res: EmptyResponse };
-	'admin/queue/resume': { req: AdminQueueResumeRequest; res: EmptyResponse };
-	'admin/queue/retry-job': { req: AdminQueueRetryJobRequest; res: EmptyResponse };
-	'admin/queue/show-job': { req: AdminQueueShowJobRequest; res: AdminQueueShowJobResponse };
-	'admin/queue/show-job-logs': { req: AdminQueueShowJobLogsRequest; res: AdminQueueShowJobLogsResponse };
-	'admin/queue/stats': { req: EmptyRequest; res: AdminQueueStatsResponse };
-	'admin/relays/add': { req: AdminRelaysAddRequest; res: AdminRelaysAddResponse };
-	'admin/relays/list': { req: EmptyRequest; res: AdminRelaysListResponse };
-	'admin/relays/remove': { req: AdminRelaysRemoveRequest; res: EmptyResponse };
-	'admin/reset-password': { req: AdminResetPasswordRequest; res: AdminResetPasswordResponse };
-	'admin/resolve-abuse-user-report': { req: AdminResolveAbuseUserReportRequest; res: EmptyResponse };
-	'admin/roles/assign': { req: AdminRolesAssignRequest; res: EmptyResponse };
-	'admin/roles/create': { req: AdminRolesCreateRequest; res: AdminRolesCreateResponse };
-	'admin/roles/delete': { req: AdminRolesDeleteRequest; res: EmptyResponse };
-	'admin/roles/list': { req: EmptyRequest; res: AdminRolesListResponse };
-	'admin/roles/show': { req: AdminRolesShowRequest; res: AdminRolesShowResponse };
-	'admin/roles/unassign': { req: AdminRolesUnassignRequest; res: EmptyResponse };
-	'admin/roles/update': { req: AdminRolesUpdateRequest; res: EmptyResponse };
-	'admin/roles/update-default-policies': { req: AdminRolesUpdateDefaultPoliciesRequest; res: EmptyResponse };
-	'admin/roles/users': { req: AdminRolesUsersRequest; res: AdminRolesUsersResponse };
-	'admin/send-email': { req: AdminSendEmailRequest; res: EmptyResponse };
-	'admin/server-info': { req: EmptyRequest; res: AdminServerInfoResponse };
-	'admin/show-moderation-logs': { req: AdminShowModerationLogsRequest; res: AdminShowModerationLogsResponse };
-	'admin/show-user': { req: AdminShowUserRequest; res: AdminShowUserResponse };
-	'admin/show-users': { req: AdminShowUsersRequest; res: AdminShowUsersResponse };
-	'admin/suspend-user': { req: AdminSuspendUserRequest; res: EmptyResponse };
-	'admin/system-webhook/create': { req: AdminSystemWebhookCreateRequest; res: AdminSystemWebhookCreateResponse };
-	'admin/system-webhook/delete': { req: AdminSystemWebhookDeleteRequest; res: EmptyResponse };
-	'admin/system-webhook/list': { req: AdminSystemWebhookListRequest; res: AdminSystemWebhookListResponse };
-	'admin/system-webhook/show': { req: AdminSystemWebhookShowRequest; res: AdminSystemWebhookShowResponse };
-	'admin/system-webhook/test': { req: AdminSystemWebhookTestRequest; res: EmptyResponse };
-	'admin/system-webhook/update': { req: AdminSystemWebhookUpdateRequest; res: AdminSystemWebhookUpdateResponse };
-	'admin/unset-mfa': { req: AdminUnsetMfaRequest; res: EmptyResponse };
-	'admin/unset-user-avatar': { req: AdminUnsetUserAvatarRequest; res: EmptyResponse };
-	'admin/unset-user-banner': { req: AdminUnsetUserBannerRequest; res: EmptyResponse };
-	'admin/unsuspend-user': { req: AdminUnsuspendUserRequest; res: EmptyResponse };
-	'admin/update-abuse-user-report': { req: AdminUpdateAbuseUserReportRequest; res: EmptyResponse };
-	'admin/update-meta': { req: AdminUpdateMetaRequest; res: EmptyResponse };
-	'admin/update-proxy-account': { req: AdminUpdateProxyAccountRequest; res: AdminUpdateProxyAccountResponse };
-	'admin/update-user-note': { req: AdminUpdateUserNoteRequest; res: EmptyResponse };
-	'announcements': { req: AnnouncementsRequest; res: AnnouncementsResponse };
-	'announcements/show': { req: AnnouncementsShowRequest; res: AnnouncementsShowResponse };
-	'antennas/create': { req: AntennasCreateRequest; res: AntennasCreateResponse };
-	'antennas/delete': { req: AntennasDeleteRequest; res: EmptyResponse };
-	'antennas/list': { req: EmptyRequest; res: AntennasListResponse };
-	'antennas/notes': { req: AntennasNotesRequest; res: AntennasNotesResponse };
-	'antennas/remove-note': { req: AntennasRemoveNoteRequest; res: EmptyResponse };
-	'antennas/show': { req: AntennasShowRequest; res: AntennasShowResponse };
-	'antennas/update': { req: AntennasUpdateRequest; res: AntennasUpdateResponse };
-	'ap/get': { req: ApGetRequest; res: ApGetResponse };
-	'ap/show': { req: ApShowRequest; res: ApShowResponse };
-	'app/create': { req: AppCreateRequest; res: AppCreateResponse };
-	'app/show': { req: AppShowRequest; res: AppShowResponse };
-	'auth/accept': { req: AuthAcceptRequest; res: EmptyResponse };
-	'auth/session/generate': { req: AuthSessionGenerateRequest; res: AuthSessionGenerateResponse };
-	'auth/session/show': { req: AuthSessionShowRequest; res: AuthSessionShowResponse };
-	'auth/session/userkey': { req: AuthSessionUserkeyRequest; res: AuthSessionUserkeyResponse };
-	'blocking/create': { req: BlockingCreateRequest; res: BlockingCreateResponse };
-	'blocking/delete': { req: BlockingDeleteRequest; res: BlockingDeleteResponse };
-	'blocking/list': { req: BlockingListRequest; res: BlockingListResponse };
-	'bubble-game/ranking': { req: BubbleGameRankingRequest; res: BubbleGameRankingResponse };
-	'bubble-game/register': { req: BubbleGameRegisterRequest; res: EmptyResponse };
-	'channels/create': { req: ChannelsCreateRequest; res: ChannelsCreateResponse };
-	'channels/favorite': { req: ChannelsFavoriteRequest; res: EmptyResponse };
-	'channels/featured': { req: EmptyRequest; res: ChannelsFeaturedResponse };
-	'channels/follow': { req: ChannelsFollowRequest; res: EmptyResponse };
-	'channels/followed': { req: ChannelsFollowedRequest; res: ChannelsFollowedResponse };
-	'channels/mute/create': { req: ChannelsMuteCreateRequest; res: EmptyResponse };
-	'channels/mute/delete': { req: ChannelsMuteDeleteRequest; res: EmptyResponse };
-	'channels/mute/list': { req: EmptyRequest; res: ChannelsMuteListResponse };
-	'channels/my-favorites': { req: EmptyRequest; res: ChannelsMyFavoritesResponse };
-	'channels/owned': { req: ChannelsOwnedRequest; res: ChannelsOwnedResponse };
-	'channels/search': { req: ChannelsSearchRequest; res: ChannelsSearchResponse };
-	'channels/show': { req: ChannelsShowRequest; res: ChannelsShowResponse };
-	'channels/timeline': { req: ChannelsTimelineRequest; res: ChannelsTimelineResponse };
-	'channels/unfavorite': { req: ChannelsUnfavoriteRequest; res: EmptyResponse };
-	'channels/unfollow': { req: ChannelsUnfollowRequest; res: EmptyResponse };
-	'channels/update': { req: ChannelsUpdateRequest; res: ChannelsUpdateResponse };
-	'charts/active-users': { req: ChartsActiveUsersRequest; res: ChartsActiveUsersResponse };
-	'charts/ap-request': { req: ChartsApRequestRequest; res: ChartsApRequestResponse };
-	'charts/drive': { req: ChartsDriveRequest; res: ChartsDriveResponse };
-	'charts/federation': { req: ChartsFederationRequest; res: ChartsFederationResponse };
-	'charts/instance': { req: ChartsInstanceRequest; res: ChartsInstanceResponse };
-	'charts/notes': { req: ChartsNotesRequest; res: ChartsNotesResponse };
-	'charts/user/drive': { req: ChartsUserDriveRequest; res: ChartsUserDriveResponse };
-	'charts/user/following': { req: ChartsUserFollowingRequest; res: ChartsUserFollowingResponse };
-	'charts/user/notes': { req: ChartsUserNotesRequest; res: ChartsUserNotesResponse };
-	'charts/user/pv': { req: ChartsUserPvRequest; res: ChartsUserPvResponse };
-	'charts/user/reactions': { req: ChartsUserReactionsRequest; res: ChartsUserReactionsResponse };
-	'charts/users': { req: ChartsUsersRequest; res: ChartsUsersResponse };
-	'chat/history': { req: ChatHistoryRequest; res: ChatHistoryResponse };
-	'chat/messages/create-to-room': { req: ChatMessagesCreateToRoomRequest; res: ChatMessagesCreateToRoomResponse };
-	'chat/messages/create-to-user': { req: ChatMessagesCreateToUserRequest; res: ChatMessagesCreateToUserResponse };
-	'chat/messages/delete': { req: ChatMessagesDeleteRequest; res: EmptyResponse };
-	'chat/messages/react': { req: ChatMessagesReactRequest; res: EmptyResponse };
-	'chat/messages/room-timeline': { req: ChatMessagesRoomTimelineRequest; res: ChatMessagesRoomTimelineResponse };
-	'chat/messages/search': { req: ChatMessagesSearchRequest; res: ChatMessagesSearchResponse };
-	'chat/messages/show': { req: ChatMessagesShowRequest; res: ChatMessagesShowResponse };
-	'chat/messages/unreact': { req: ChatMessagesUnreactRequest; res: EmptyResponse };
-	'chat/messages/user-timeline': { req: ChatMessagesUserTimelineRequest; res: ChatMessagesUserTimelineResponse };
-	'chat/read-all': { req: EmptyRequest; res: EmptyResponse };
-	'chat/rooms/create': { req: ChatRoomsCreateRequest; res: ChatRoomsCreateResponse };
-	'chat/rooms/delete': { req: ChatRoomsDeleteRequest; res: EmptyResponse };
-	'chat/rooms/invitations/create': { req: ChatRoomsInvitationsCreateRequest; res: ChatRoomsInvitationsCreateResponse };
-	'chat/rooms/invitations/ignore': { req: ChatRoomsInvitationsIgnoreRequest; res: EmptyResponse };
-	'chat/rooms/invitations/inbox': { req: ChatRoomsInvitationsInboxRequest; res: ChatRoomsInvitationsInboxResponse };
-	'chat/rooms/invitations/outbox': { req: ChatRoomsInvitationsOutboxRequest; res: ChatRoomsInvitationsOutboxResponse };
-	'chat/rooms/join': { req: ChatRoomsJoinRequest; res: EmptyResponse };
-	'chat/rooms/joining': { req: ChatRoomsJoiningRequest; res: ChatRoomsJoiningResponse };
-	'chat/rooms/leave': { req: ChatRoomsLeaveRequest; res: EmptyResponse };
-	'chat/rooms/members': { req: ChatRoomsMembersRequest; res: ChatRoomsMembersResponse };
-	'chat/rooms/mute': { req: ChatRoomsMuteRequest; res: EmptyResponse };
-	'chat/rooms/owned': { req: ChatRoomsOwnedRequest; res: ChatRoomsOwnedResponse };
-	'chat/rooms/show': { req: ChatRoomsShowRequest; res: ChatRoomsShowResponse };
-	'chat/rooms/update': { req: ChatRoomsUpdateRequest; res: ChatRoomsUpdateResponse };
-	'clips/add-note': { req: ClipsAddNoteRequest; res: EmptyResponse };
-	'clips/create': { req: ClipsCreateRequest; res: ClipsCreateResponse };
-	'clips/delete': { req: ClipsDeleteRequest; res: EmptyResponse };
-	'clips/favorite': { req: ClipsFavoriteRequest; res: EmptyResponse };
-	'clips/list': { req: ClipsListRequest; res: ClipsListResponse };
-	'clips/my-favorites': { req: EmptyRequest; res: ClipsMyFavoritesResponse };
-	'clips/notes': { req: ClipsNotesRequest; res: ClipsNotesResponse };
-	'clips/remove-note': { req: ClipsRemoveNoteRequest; res: EmptyResponse };
-	'clips/show': { req: ClipsShowRequest; res: ClipsShowResponse };
-	'clips/unfavorite': { req: ClipsUnfavoriteRequest; res: EmptyResponse };
-	'clips/update': { req: ClipsUpdateRequest; res: ClipsUpdateResponse };
-	'drive': { req: EmptyRequest; res: DriveResponse };
-	'drive/files': { req: DriveFilesRequest; res: DriveFilesResponse };
-	'drive/files/attached-chat-messages': { req: DriveFilesAttachedChatMessagesRequest; res: DriveFilesAttachedChatMessagesResponse };
+	'admin/avatar-decorations/list': { req: AdminAvatarDecorationsListRequest; res: AdminAvatarDecorationsLis…3667 tokens truncated…ive/files/attached-chat-messages': { req: DriveFilesAttachedChatMessagesRequest; res: DriveFilesAttachedChatMessagesResponse };
 	'drive/files/attached-notes': { req: DriveFilesAttachedNotesRequest; res: DriveFilesAttachedNotesResponse };
 	'drive/files/check-existence': { req: DriveFilesCheckExistenceRequest; res: DriveFilesCheckExistenceResponse };
 	'drive/files/create': { req: DriveFilesCreateRequest; res: DriveFilesCreateResponse };
@@ -942,6 +782,9 @@ export type Endpoints = {
 	'i/change-password': { req: IChangePasswordRequest; res: EmptyResponse };
 	'i/claim-achievement': { req: IClaimAchievementRequest; res: EmptyResponse };
 	'i/delete-account': { req: IDeleteAccountRequest; res: EmptyResponse };
+	'i/disliked-emojis': { req: EmptyRequest; res: IDislikedEmojisResponse };
+	'i/disliked-emojis-add': { req: IDislikedEmojisAddRequest; res: EmptyResponse };
+	'i/disliked-emojis-delete': { req: IDislikedEmojisDeleteRequest; res: EmptyResponse };
 	'i/export-antennas': { req: EmptyRequest; res: EmptyResponse };
 	'i/export-blocking': { req: EmptyRequest; res: EmptyResponse };
 	'i/export-clips': { req: EmptyRequest; res: EmptyResponse };
@@ -1114,3 +957,4 @@ export type Endpoints = {
 export const endpointReqTypes = {
 	'drive/files/create': 'multipart/form-data',
 } as const satisfies { [K in keyof Endpoints]?: 'multipart/form-data'; };
+
