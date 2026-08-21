@@ -168,7 +168,7 @@ export const PREF_DEF = definePreferences({
 		default: true,
 	},
 	defaultNoteVisibility: {
-		default: 'public' as (typeof Misskey.noteVisibilities)[number],
+		default: 'home' as (typeof Misskey.noteVisibilities)[number],
 	},
 	defaultNoteLocalOnly: {
 		default: false,
@@ -177,7 +177,7 @@ export const PREF_DEF = definePreferences({
 		default: true,
 	},
 	rememberNoteVisibility: {
-		default: true,
+		default: false,
 	},
 	reportError: {
 		default: false,
