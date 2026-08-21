@@ -4,9 +4,22 @@
  */
 
 import * as Misskey from 'misskey-js';
+import { lang } from '@@/js/config.js';
 import * as os from '@/os.js';
 import { prefer } from '@/preferences.js';
 import { i18n } from '@/i18n.js';
+
+const moderatorSensitiveImageLabels: Record<string, string> = {
+	'en-US': 'This image was marked as sensitive by an administrator or moderator for some reason.',
+	'ja-JP': 'この画像は何らかの理由で管理人またはモデレーターにセンシティブに設定されました。',
+	'ja-KS': 'この画像はなんかの理由で管理人かモデレーターにセンシティブ設定されたで。',
+};
+
+export function getSensitiveImageLabel(file: Misskey.entities.DriveFile): string {
+	return file.isSensitiveByModerator
+		? (moderatorSensitiveImageLabels[lang] ?? moderatorSensitiveImageLabels['en-US']!)
+		: i18n.ts.sensitive;
+}
 
 export function shouldHideFileByDefault(file: Misskey.entities.DriveFile, ignoreDataSaver = false): boolean {
 	if (prefer.s.nsfw === 'force' || (!ignoreDataSaver && prefer.s.dataSaver.media)) {
