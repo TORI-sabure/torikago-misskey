@@ -609,6 +609,7 @@ export class DriveService {
 			? this.userEntityService.isLocalUser(user) && profile!.alwaysMarkNsfw ? true :
 			sensitive ?? false
 			: false;
+		file.isSensitiveByModerator = false;
 
 		if (user && this.utilityService.isMediaSilencedHost(this.meta.mediaSilencedHosts, user.host)) file.isSensitive = true;
 		if (info.sensitive && profile!.autoSensitive) file.isSensitive = true;
