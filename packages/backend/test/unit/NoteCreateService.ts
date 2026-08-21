@@ -96,6 +96,7 @@ describe('NoteCreateService', () => {
 			folderId: null,
 			folder: null,
 			isSensitive: false,
+			isSensitiveByModerator: false,
 			maybeSensitive: false,
 			maybePorn: false,
 			isLink: false,
