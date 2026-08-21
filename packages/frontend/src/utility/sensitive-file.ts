@@ -10,9 +10,9 @@ import { prefer } from '@/preferences.js';
 import { i18n } from '@/i18n.js';
 
 const moderatorSensitiveImageLabels: Record<string, string> = {
-	'en-US': 'This image was marked as sensitive by an administrator or moderator for some reason.',
-	'ja-JP': 'この画像は何らかの理由で管理人またはモデレーターにセンシティブに設定されました。',
-	'ja-KS': 'この画像はなんかの理由で管理人かモデレーターにセンシティブ設定されたで。',
+	'en-US': 'This file was marked as sensitive by an administrator or moderator.',
+	'ja-JP': 'このファイルは管理人またはモデレーターにセンシティブに設定されました。',
+	'ja-KS': 'このファイルは管理人かモデレーターにセンシティブ設定されたで。',
 };
 
 export function getSensitiveImageLabel(file: Misskey.entities.DriveFile): string {
