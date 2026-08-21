@@ -44,7 +44,7 @@ export const packedDriveFileSchema = {
 		},
 		isSensitiveByModerator: {
 			type: 'boolean',
-			optional: false, nullable: false,
+			optional: true, nullable: false,
 		},
 		blurhash: {
 			type: 'string',
