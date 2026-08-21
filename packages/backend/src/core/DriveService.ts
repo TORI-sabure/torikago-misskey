@@ -609,6 +609,7 @@ export class DriveService {
 			? this.userEntityService.isLocalUser(user) && profile!.alwaysMarkNsfw ? true :
 			sensitive ?? false
 			: false;
+		file.isSensitiveByModerator = false;
 
 		if (user && this.utilityService.isMediaSilencedHost(this.meta.mediaSilencedHosts, user.host)) file.isSensitive = true;
 		if (info.sensitive && profile!.autoSensitive) file.isSensitive = true;
@@ -684,13 +685,19 @@ export class DriveService {
 	@bindThis
 	public async updateFile(file: MiDriveFile, values: Partial<MiDriveFile>, updater: MiUser) {
 		const alwaysMarkNsfw = (await this.roleService.getUserPolicies(file.userId)).alwaysMarkNsfw;
+		const sensitivityChanged = values.isSensitive !== undefined && values.isSensitive !== file.isSensitive;
+		const isModeratorUpdate = file.userId !== updater.id && await this.roleService.isModerator(updater);
 
 		if (values.name != null && !this.driveFileEntityService.validateFileName(values.name)) {
 			throw new DriveService.InvalidFileNameError();
 		}
 
-		if (values.isSensitive !== undefined && values.isSensitive !== file.isSensitive && alwaysMarkNsfw && !values.isSensitive) {
+		if (sensitivityChanged && alwaysMarkNsfw && !values.isSensitive) {
 			throw new DriveService.CannotUnmarkSensitiveError();
+		}
+
+		if (sensitivityChanged) {
+			values.isSensitiveByModerator = isModeratorUpdate && values.isSensitive === true;
 		}
 
 		if (values.folderId != null) {
@@ -713,24 +720,22 @@ export class DriveService {
 			this.globalEventService.publishDriveStream(file.userId, 'fileUpdated', fileObj);
 		}
 
-		if (await this.roleService.isModerator(updater) && (file.userId !== updater.id)) {
-			if (values.isSensitive !== undefined && values.isSensitive !== file.isSensitive) {
-				const user = file.userId ? await this.usersRepository.findOneByOrFail({ id: file.userId }) : null;
-				if (values.isSensitive) {
-					this.moderationLogService.log(updater, 'markSensitiveDriveFile', {
-						fileId: file.id,
-						fileUserId: file.userId,
-						fileUserUsername: user?.username ?? null,
-						fileUserHost: user?.host ?? null,
-					});
-				} else {
-					this.moderationLogService.log(updater, 'unmarkSensitiveDriveFile', {
-						fileId: file.id,
-						fileUserId: file.userId,
-						fileUserUsername: user?.username ?? null,
-						fileUserHost: user?.host ?? null,
-					});
-				}
+		if (isModeratorUpdate && sensitivityChanged) {
+			const user = file.userId ? await this.usersRepository.findOneByOrFail({ id: file.userId }) : null;
+			if (values.isSensitive) {
+				this.moderationLogService.log(updater, 'markSensitiveDriveFile', {
+					fileId: file.id,
+					fileUserId: file.userId,
+					fileUserUsername: user?.username ?? null,
+					fileUserHost: user?.host ?? null,
+				});
+			} else {
+				this.moderationLogService.log(updater, 'unmarkSensitiveDriveFile', {
+					fileId: file.id,
+					fileUserId: file.userId,
+					fileUserUsername: user?.username ?? null,
+					fileUserHost: user?.host ?? null,
+				});
 			}
 		}
 

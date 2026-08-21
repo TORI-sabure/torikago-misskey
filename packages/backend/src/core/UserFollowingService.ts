@@ -738,14 +738,19 @@ export class UserFollowingService implements OnModuleInit {
 	}
 
 	@bindThis
-	public async getMutualFolloweeIds(userId: MiUser['id']) {
-		const followings = await this.followingsRepository.createQueryBuilder('following')
-			.select('following.followeeId', 'followeeId')
-			.innerJoin('following', 'reverseFollowing', 'reverseFollowing.followerId = following.followeeId AND reverseFollowing.followeeId = :userId', { userId })
-			.where('following.followerId = :userId', { userId })
-			.getRawMany<{ followeeId: MiUser['id'] }>();
+	public async getMutualFolloweeIds(userId: MiUser['id'], followeeIds?: MiUser['id'][]) {
+		const candidates = followeeIds ?? (await this.getFollowees(userId)).map(following => following.followeeId);
+		if (candidates.length === 0) return [];
 
-		return followings.map(following => following.followeeId);
+		// HTLと同様に、まず自分がフォローしているユーザーだけを候補にし、
+		// その候補のうち自分をフォローしているユーザーを一括で取得する。
+		const reverseFollowings = await this.followingsRepository.createQueryBuilder('following')
+			.select('following.followerId', 'followerId')
+			.where('following.followeeId = :userId', { userId })
+			.andWhere('following.followerId IN (:...candidates)', { candidates })
+			.getRawMany<{ followerId: MiUser['id'] }>();
+
+		return reverseFollowings.map(following => following.followerId);
 	}
 
 	@bindThis

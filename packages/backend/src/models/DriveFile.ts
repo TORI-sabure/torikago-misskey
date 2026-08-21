@@ -155,6 +155,12 @@ export class MiDriveFile {
 	})
 	public isSensitive: boolean;
 
+	@Column('boolean', {
+		default: false,
+		comment: 'Whether the DriveFile was marked as sensitive by a moderator.',
+	})
+	public isSensitiveByModerator: boolean;
+
 	@Index()
 	@Column('boolean', {
 		default: false,
