@@ -85,7 +85,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 							></textarea>
 						</div>
 						<div class="description">
-							<MkOmit :maxHeight="300">
+							<MkOmit :maxHeight="500">
 								<Mfm v-if="user.description" :text="user.description" :isNote="false" :author="user" class="_selectable"/>
 								<p v-else class="empty">{{ i18n.ts.noAccountDescription }}</p>
 							</MkOmit>
