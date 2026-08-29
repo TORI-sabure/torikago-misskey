@@ -185,6 +185,9 @@ export const PREF_DEF = definePreferences({
 	collapseRenotes: {
 		default: true,
 	},
+	enableRenoteVisibilitySelection: {
+		default: true,
+	},
 	menu: {
 		default: [
 			'notifications',

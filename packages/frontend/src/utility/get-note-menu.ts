@@ -629,6 +629,35 @@ export function getRenoteMenu(props: {
 	const normalRenoteItems: MenuItem[] = [];
 	const normalExternalChannelRenoteItems: MenuItem[] = [];
 
+	function performNormalRenote(requestedVisibility?: Visibility) {
+		const el = props.renoteButton.value;
+		if (el && prefer.s.animation) {
+			const rect = el.getBoundingClientRect();
+			const x = rect.left + (el.offsetWidth / 2);
+			const y = rect.top + (el.offsetHeight / 2);
+			const { dispose } = os.popup(MkRippleEffect, { x, y }, {
+				end: () => dispose(),
+			});
+		}
+
+		const configuredVisibility = requestedVisibility ??
+			(prefer.s.rememberNoteVisibility ? store.s.visibility : prefer.s.defaultNoteVisibility);
+		const localOnly = prefer.s.rememberNoteVisibility ? store.s.localOnly : prefer.s.defaultNoteLocalOnly;
+		let visibility = smallerVisibility(appearNote.visibility, configuredVisibility);
+		if (appearNote.channel?.isSensitive) visibility = smallerVisibility(visibility, 'home');
+
+		if (!props.mock) {
+			misskeyApi('notes/create', {
+				localOnly,
+				visibility,
+				renoteId: appearNote.id,
+			}).then((res) => {
+				os.toast(i18n.ts.renoted);
+				globalEvents.emit('notePosted', res.createdNote);
+			});
+		}
+	}
+
 	if (appearNote.channel) {
 		channelRenoteItems.push(...[{
 			text: i18n.ts.inChannelRenote,
@@ -669,41 +698,29 @@ export function getRenoteMenu(props: {
 	}
 
 	if (!appearNote.channel || appearNote.channel.allowRenoteToExternal) {
-		normalRenoteItems.push(...[{
+		const renoteItem: MenuItem = prefer.s.enableRenoteVisibilitySelection ? {
+			type: 'parent',
 			text: i18n.ts.renote,
 			icon: 'ti ti-repeat',
-			action: () => {
-				const el = props.renoteButton.value;
-				if (el && prefer.s.animation) {
-					const rect = el.getBoundingClientRect();
-					const x = rect.left + (el.offsetWidth / 2);
-					const y = rect.top + (el.offsetHeight / 2);
-					const { dispose } = os.popup(MkRippleEffect, { x, y }, {
-						end: () => dispose(),
-					});
-				}
-
-				const configuredVisibility = prefer.s.rememberNoteVisibility ? store.s.visibility : prefer.s.defaultNoteVisibility;
-				const localOnly = prefer.s.rememberNoteVisibility ? store.s.localOnly : prefer.s.defaultNoteLocalOnly;
-
-				let visibility = appearNote.visibility;
-				visibility = smallerVisibility(visibility, configuredVisibility);
-				if (appearNote.channel?.isSensitive) {
-					visibility = smallerVisibility(visibility, 'home');
-				}
-
-				if (!props.mock) {
-					misskeyApi('notes/create', {
-						localOnly,
-						visibility,
-						renoteId: appearNote.id,
-					}).then((res) => {
-						os.toast(i18n.ts.renoted);
-						globalEvents.emit('notePosted', res.createdNote);
-					});
-				}
-			},
-		}, ...(props.mock ? [] : [{
+			children: [{
+				text: i18n.ts._visibility.public,
+				icon: 'ti ti-world',
+				action: () => performNormalRenote('public'),
+			}, {
+				text: i18n.ts._visibility.home,
+				icon: 'ti ti-home',
+				action: () => performNormalRenote('home'),
+			}, {
+				text: i18n.ts._visibility.followers,
+				icon: 'ti ti-lock',
+				action: () => performNormalRenote('followers'),
+			}],
+		} : {
+			text: i18n.ts.renote,
+			icon: 'ti ti-repeat',
+			action: () => performNormalRenote(),
+		};
+		normalRenoteItems.push(...[renoteItem, ...(props.mock ? [] : [{
 			text: i18n.ts.quote,
 			icon: 'ti ti-quote',
 			action: () => {

@@ -55,20 +55,20 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				throw err;
 			});
 
-			// 引数がnullか空文字であれば、パーソナルメモを削除する
-			if (ps.memo === '' || ps.memo == null) {
-				await this.userMemosRepository.delete({
-					userId: me.id,
-					targetUserId: target.id,
-				});
-				return;
-			}
-
-			// 以前に作成されたパーソナルメモがあるかどうか確認
 			const previousMemo = await this.userMemosRepository.findOneBy({
 				userId: me.id,
 				targetUserId: target.id,
 			});
+
+			// 絵文字メモが残っている場合は行そのものを削除しない
+			if (ps.memo === '' || ps.memo == null) {
+				if (previousMemo?.dislikedEmojis.length) {
+					await this.userMemosRepository.update(previousMemo.id, { memo: '' });
+				} else if (previousMemo) {
+					await this.userMemosRepository.delete(previousMemo.id);
+				}
+				return;
+			}
 
 			if (!previousMemo) {
 				await this.userMemosRepository.insert({
@@ -76,6 +76,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					userId: me.id,
 					targetUserId: target.id,
 					memo: ps.memo,
+					dislikedEmojis: [],
 				});
 			} else {
 				await this.userMemosRepository.update(previousMemo.id, {

@@ -175,6 +175,14 @@ SPDX-License-Identifier: AGPL-3.0-only
 								</MkPreferenceContainer>
 							</SearchMarker>
 
+							<SearchMarker :keywords="['renote', 'visibility', 'public', 'home', 'followers', 'リノート', '公開範囲']">
+								<MkPreferenceContainer k="enableRenoteVisibilitySelection">
+									<MkSwitch v-model="enableRenoteVisibilitySelection">
+										<template #label><SearchLabel>{{ renoteVisibilitySelectionLabel }}</SearchLabel></template>
+									</MkSwitch>
+								</MkPreferenceContainer>
+							</SearchMarker>
+
 							<SearchMarker :keywords="['pinned', 'list']">
 								<MkFolder>
 									<template #label><SearchLabel>{{ i18n.ts.pinnedList }}</SearchLabel></template>
@@ -914,6 +922,19 @@ const mutualAccountBadgeLabels: Record<string, string> = {
 	'pt-PT': 'Mostrar uma marca nas notas de contas mútuas',
 };
 const mutualAccountBadgeLabel = mutualAccountBadgeLabels[currentLang] ?? mutualAccountBadgeLabels['en-US']!;
+const renoteVisibilitySelectionLabels: Record<string, string> = {
+	'en-US': 'Allow choosing visibility when Renoting',
+	'ja-JP': 'リノートする際に公開範囲を選択できるようにする',
+	'ja-KS': 'リノートするとき公開範囲を選べるようにするで',
+	'ko-KR': '리노트할 때 공개 범위를 선택할 수 있도록 하기',
+	'zh-CN': '转发时允许选择可见范围',
+	'zh-TW': '轉發時允許選擇可見範圍',
+	'de-DE': 'Sichtbarkeit beim Renote auswählen',
+	'fr-FR': 'Permettre de choisir la visibilité lors d’un Renote',
+	'es-ES': 'Permitir elegir la visibilidad al renotar',
+	'pt-PT': 'Permitir escolher a visibilidade ao renotar',
+};
+const renoteVisibilitySelectionLabel = renoteVisibilitySelectionLabels[currentLang] ?? renoteVisibilitySelectionLabels['en-US']!;
 
 const $i = ensureSignin();
 
@@ -930,6 +951,7 @@ const hemisphere = prefer.model('hemisphere');
 const showNoteActionsOnlyHover = prefer.model('showNoteActionsOnlyHover');
 const showClipButtonInNoteFooter = prefer.model('showClipButtonInNoteFooter');
 const collapseRenotes = prefer.model('collapseRenotes');
+const enableRenoteVisibilitySelection = prefer.model('enableRenoteVisibilitySelection');
 const advancedMfm = prefer.model('advancedMfm');
 const showReactionsCount = prefer.model('showReactionsCount');
 const showMutualAccountBadge = prefer.model('showMutualAccountBadge');

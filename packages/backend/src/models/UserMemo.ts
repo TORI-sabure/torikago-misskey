@@ -44,4 +44,11 @@ export class MiUserMemo {
 		comment: 'Memo.',
 	})
 	public memo: string;
+
+	@Column('varchar', {
+		array: true,
+		default: '{}',
+		comment: 'Personal list of emojis the author believes the target user dislikes.',
+	})
+	public dislikedEmojis: string[];
 }
