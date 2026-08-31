@@ -158,6 +158,8 @@ export const paramDef = {
 		manifestJsonOverride: { type: 'string' },
 		enableFanoutTimeline: { type: 'boolean' },
 		enableFanoutTimelineDbFallback: { type: 'boolean' },
+		enableRecommendedTimeline: { type: 'boolean' },
+		recommendedTimelineForcedWords: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 64 } },
 		perLocalUserUserTimelineCacheMax: { type: 'integer' },
 		perRemoteUserUserTimelineCacheMax: { type: 'integer' },
 		perUserHomeTimelineCacheMax: { type: 'integer' },
@@ -680,6 +682,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 			if (ps.enableFanoutTimelineDbFallback !== undefined) {
 				set.enableFanoutTimelineDbFallback = ps.enableFanoutTimelineDbFallback;
+			}
+
+			if (ps.enableRecommendedTimeline !== undefined) {
+				set.enableRecommendedTimeline = ps.enableRecommendedTimeline;
+			}
+
+			if (ps.recommendedTimelineForcedWords !== undefined) {
+				set.recommendedTimelineForcedWords = [...new Set(ps.recommendedTimelineForcedWords.map(word => word.trim()).filter(Boolean))];
 			}
 
 			if (ps.perLocalUserUserTimelineCacheMax !== undefined) {

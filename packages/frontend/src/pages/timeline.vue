@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <PageWithHeader v-model:tab="src" :actions="headerActions" :tabs="$i ? headerTabs : headerTabsWhenNotLogin" :swipable="true" :displayMyAvatar="true" :canOmitTitle="true">
 	<div class="_spacer" style="--MI_SPACER-w: 800px;">
 		<MkTip v-if="isBasicTimeline(src)" :k="`tl.${src}`" style="margin-bottom: var(--MI-margin);">
-			{{ src === 'mutual' ? mutualTimelineText.description : i18n.ts._timelineDescription[src] }}
+			{{ src === 'mutual' ? mutualTimelineText.description : src === 'recommended' ? recommendedTimelineText.description : i18n.ts._timelineDescription[src] }}
 		</MkTip>
 		<MkPostForm v-if="prefer.r.showFixedPostForm.value" :class="$style.postForm" class="_panel" fixed style="margin-bottom: var(--MI-margin);"/>
 		<MkStreamingNotesTimeline
@@ -97,6 +97,35 @@ const mutualTimelineTexts: Record<string, { title: string; description: string }
 };
 
 const mutualTimelineText = mutualTimelineTexts[lang] ?? mutualTimelineTexts['en-US']!;
+
+const recommendedTimelineTexts: Record<string, { title: string; description: string }> = {
+	'en-US': {
+		title: 'For you',
+		description: 'The recommended timeline shows recent posts selected from accounts followed by people you follow. Posts you have already seen are normally not shown again.',
+	},
+	'ja-JP': {
+		title: 'おすすめ',
+		description: 'おすすめタイムラインでは、あなたがフォローしている人のフォロー先を中心に、興味がありそうな最近の投稿を表示します。表示済みの投稿は通常、再表示されません。',
+	},
+	'ja-KS': {
+		title: 'おすすめ',
+		description: 'おすすめタイムラインは、あんたがフォローしとる人のフォロー先を中心に、興味ありそうな最近の投稿を出すで。いっぺん見た投稿は、ふつうもう出えへんで。',
+	},
+	'ko-KR': {
+		title: '추천',
+		description: '추천 타임라인에는 내가 팔로우하는 사람이 팔로우하는 계정을 중심으로 관심을 가질 만한 최근 게시물이 표시됩니다. 이미 표시된 게시물은 보통 다시 표시되지 않습니다.',
+	},
+	'zh-CN': {
+		title: '推荐',
+		description: '推荐时间线会以你关注的人所关注的账号为主，显示你可能感兴趣的近期帖子。通常不会再次显示已经看过的帖子。',
+	},
+	'zh-TW': {
+		title: '推薦',
+		description: '推薦時間軸會以你追蹤的人所追蹤的帳號為主，顯示你可能感興趣的近期貼文。通常不會再次顯示已看過的貼文。',
+	},
+};
+
+const recommendedTimelineText = recommendedTimelineTexts[lang] ?? recommendedTimelineTexts['en-US']!;
 
 type TimelinePageSrc = BasicTimelineType | `list:${string}`;
 
@@ -321,7 +350,7 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	iconOnly: true,
 }))), ...availableBasicTimelines().map(tl => ({
 	key: tl,
-	title: tl === 'mutual' ? mutualTimelineText.title : i18n.ts._timelines[tl],
+	title: tl === 'mutual' ? mutualTimelineText.title : tl === 'recommended' ? recommendedTimelineText.title : i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
 })), {

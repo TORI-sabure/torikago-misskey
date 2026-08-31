@@ -130,6 +130,14 @@ if (props.src === 'antenna') {
 		}) as unknown as Misskey.Endpoints['notes/timeline']['req']),
 		useShallowRef: true,
 	}));
+} else if (props.src === 'recommended') {
+	paginator = markRaw(new Paginator('notes/recommended-timeline', {
+		computedParams: computed(() => ({
+			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+			withFiles: props.onlyFiles ? true : undefined,
+		})),
+		useShallowRef: true,
+	}));
 } else if (props.src === 'local') {
 	paginator = markRaw(new Paginator('notes/local-timeline', {
 		computedParams: computed(() => ({
@@ -276,6 +284,15 @@ if (!store.s.realtimeMode) {
 	});
 }
 
+if (props.src === 'recommended') {
+	useInterval(async () => {
+		paginator.reload();
+	}, 60_000, {
+		immediate: false,
+		afterMounted: true,
+	});
+}
+
 useGlobalEvent('noteDeleted', (noteId) => {
 	paginator.removeItem(noteId);
 });
@@ -350,6 +367,8 @@ function connectChannel() {
 			mutualOnly: true,
 		} as unknown as Misskey.Channels['homeTimeline']['params']);
 		connections.mutualTimeline.on('note', prepend);
+	} else if (props.src === 'recommended') {
+		// Recommended results are ranked on demand and refreshed by the lightweight poller above.
 	} else if (props.src === 'local') {
 		connections.localTimeline = stream.useChannel('localTimeline', {
 			withRenotes: props.withRenotes,
@@ -424,7 +443,6 @@ watch(() => [props.list, props.antenna, props.channel, props.role, props.withRen
 	}
 });
 watch(() => props.withSensitive, reloadTimeline);
-
 
 onUnmounted(() => {
 	disconnectChannel();

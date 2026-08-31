@@ -604,6 +604,18 @@ export class MiMeta {
 	})
 	public enableFanoutTimelineDbFallback: boolean;
 
+	@Column('boolean', {
+		default: false,
+	})
+	public enableRecommendedTimeline: boolean;
+
+	@Column('varchar', {
+		length: 64,
+		array: true,
+		default: '{}',
+	})
+	public recommendedTimelineForcedWords: string[];
+
 	@Column('integer', {
 		default: 300,
 	})

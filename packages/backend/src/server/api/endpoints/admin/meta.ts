@@ -399,6 +399,15 @@ export const meta = {
 				type: 'boolean',
 				optional: false, nullable: false,
 			},
+			enableRecommendedTimeline: {
+				type: 'boolean',
+				optional: false, nullable: false,
+			},
+			recommendedTimelineForcedWords: {
+				type: 'array',
+				optional: false, nullable: false,
+				items: { type: 'string' },
+			},
 			perLocalUserUserTimelineCacheMax: {
 				type: 'number',
 				optional: false, nullable: false,
@@ -754,6 +763,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				manifestJsonOverride: instance.manifestJsonOverride,
 				enableFanoutTimeline: instance.enableFanoutTimeline,
 				enableFanoutTimelineDbFallback: instance.enableFanoutTimelineDbFallback,
+				enableRecommendedTimeline: instance.enableRecommendedTimeline,
+				recommendedTimelineForcedWords: instance.recommendedTimelineForcedWords,
 				perLocalUserUserTimelineCacheMax: instance.perLocalUserUserTimelineCacheMax,
 				perRemoteUserUserTimelineCacheMax: instance.perRemoteUserUserTimelineCacheMax,
 				perUserHomeTimelineCacheMax: instance.perUserHomeTimelineCacheMax,

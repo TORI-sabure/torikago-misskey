@@ -9,6 +9,7 @@ import { instance } from '@/instance.js';
 export const basicTimelineTypes = [
 	'mutual',
 	'home',
+	'recommended',
 	'local',
 	'social',
 	'global',
@@ -26,6 +27,8 @@ export function basicTimelineIconClass(timeline: BasicTimelineType): string {
 			return 'ti ti-home';
 		case 'mutual':
 			return 'ti ti-users';
+		case 'recommended':
+			return 'ti ti-sparkles';
 		case 'local':
 			return 'ti ti-planet';
 		case 'social':
@@ -41,6 +44,8 @@ export function isAvailableBasicTimeline(timeline: BasicTimelineType | undefined
 			return $i != null;
 		case 'mutual':
 			return $i != null;
+		case 'recommended':
+			return $i != null && (instance.features as typeof instance.features & { recommendedTimeline?: boolean } | undefined)?.recommendedTimeline === true;
 		case 'local':
 			return ($i == null && instance.policies.ltlAvailable) || ($i != null && $i.policies.ltlAvailable);
 		case 'social':

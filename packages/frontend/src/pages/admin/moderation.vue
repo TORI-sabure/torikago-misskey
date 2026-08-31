@@ -8,6 +8,22 @@ SPDX-License-Identifier: AGPL-3.0-only
 	<div class="_spacer" style="--MI_SPACER-w: 700px; --MI_SPACER-min: 16px; --MI_SPACER-max: 32px;">
 		<SearchMarker path="/admin/moderation" :label="i18n.ts.moderation" :keywords="['moderation']" icon="ti ti-shield" :inlining="['serverRules']">
 			<div class="_gaps_m">
+				<SearchMarker :keywords="['recommended', 'timeline', 'おすすめ', 'タイムライン']">
+					<MkSwitch v-model="enableRecommendedTimeline" @change="onChange_enableRecommendedTimeline">
+						<template #label><SearchLabel>{{ recommendedTimelineAdminText.label }}</SearchLabel></template>
+						<template #caption><SearchText>{{ recommendedTimelineAdminText.caption }}</SearchText></template>
+					</MkSwitch>
+					<MkFolder v-if="enableRecommendedTimeline" style="margin-top: 12px;">
+						<template #label>{{ recommendedTimelineAdminText.forcedWords }}</template>
+						<div class="_gaps_s">
+							<MkTextarea v-model="recommendedTimelineForcedWords">
+								<template #caption>{{ recommendedTimelineAdminText.forcedWordsCaption }}</template>
+							</MkTextarea>
+							<MkButton primary @click="save_recommendedTimelineForcedWords">{{ i18n.ts.save }}</MkButton>
+						</div>
+					</MkFolder>
+				</SearchMarker>
+
 				<SearchMarker :keywords="['open', 'registration']">
 					<MkSwitch :modelValue="enableRegistration" @update:modelValue="onChange_enableRegistration">
 						<template #label><SearchLabel>{{ i18n.ts._serverSettings.openRegistration }}</SearchLabel></template>
@@ -194,6 +210,17 @@ const preservedUsernames = ref(meta.preservedUsernames.join('\n'));
 const blockedHosts = ref(meta.blockedHosts.join('\n'));
 const silencedHosts = ref(meta.silencedHosts?.join('\n') ?? '');
 const mediaSilencedHosts = ref(meta.mediaSilencedHosts.join('\n'));
+const enableRecommendedTimeline = ref((meta as typeof meta & { enableRecommendedTimeline?: boolean }).enableRecommendedTimeline ?? false);
+const recommendedTimelineForcedWords = ref(((meta as typeof meta & { recommendedTimelineForcedWords?: string[] }).recommendedTimelineForcedWords ?? []).join('\n'));
+const recommendedTimelineAdminTexts: Record<string, { label: string; caption: string; forcedWords: string; forcedWordsCaption: string }> = {
+	'en-US': { label: 'Enable recommended timeline', caption: 'When disabled, users cannot open the recommended timeline and no recommendation results are generated.', forcedWords: 'Always-recommend words', forcedWordsCaption: 'One plain-text word per line. Visibility, mute, and block rules are never bypassed.' },
+	'ja-JP': { label: 'おすすめタイムラインを有効にする', caption: '無効にすると、ユーザーはおすすめタイムラインを利用できず、おすすめ結果も生成されません。', forcedWords: '必ずおすすめに含めるワード', forcedWordsCaption: '1行に1つ、通常の文字列として指定します。公開範囲・ミュート・ブロックは常に優先されます。' },
+	'ja-KS': { label: 'おすすめタイムラインを有効にする', caption: '無効にしたら、ユーザーはおすすめタイムラインを使えへんし、おすすめ結果も作られへんで。', forcedWords: '必ずおすすめに入れる言葉', forcedWordsCaption: '1行に1つずつ書いてな。公開範囲・ミュート・ブロックはいつでも優先やで。' },
+	'ko-KR': { label: '추천 타임라인 활성화', caption: '비활성화하면 사용자가 추천 타임라인을 열 수 없고 추천 결과도 생성되지 않습니다.', forcedWords: '항상 추천에 포함할 단어', forcedWordsCaption: '한 줄에 일반 텍스트 하나를 입력하세요. 공개 범위, 뮤트 및 차단 규칙은 항상 우선합니다.' },
+	'zh-CN': { label: '启用推荐时间线', caption: '禁用后，用户无法打开推荐时间线，也不会生成推荐结果。', forcedWords: '始终推荐的词语', forcedWordsCaption: '每行输入一个纯文本词语。可见范围、静音和屏蔽规则始终优先。' },
+	'zh-TW': { label: '啟用推薦時間軸', caption: '停用後，使用者無法開啟推薦時間軸，也不會產生推薦結果。', forcedWords: '一律推薦的詞語', forcedWordsCaption: '每行輸入一個純文字詞語。可見範圍、靜音與封鎖規則永遠優先。' },
+};
+const recommendedTimelineAdminText = recommendedTimelineAdminTexts[window.document.documentElement.lang] ?? recommendedTimelineAdminTexts['en-US']!;
 
 async function onChange_enableRegistration(value: boolean) {
 	if (value) {
@@ -219,6 +246,20 @@ function onChange_emailRequiredForSignup(value: boolean) {
 	}).then(() => {
 		fetchInstance(true);
 	});
+}
+
+function onChange_enableRecommendedTimeline(value: boolean) {
+	os.apiWithDialog('admin/update-meta', {
+		enableRecommendedTimeline: value,
+	} as never).then(() => {
+		fetchInstance(true);
+	});
+}
+
+function save_recommendedTimelineForcedWords() {
+	os.apiWithDialog('admin/update-meta', {
+		recommendedTimelineForcedWords: recommendedTimelineForcedWords.value.split('\n').map(word => word.trim()).filter(Boolean),
+	} as never).then(() => fetchInstance(true));
 }
 
 function onChange_ugcVisibilityForVisitor(value: typeof ugcVisibilityForVisitor.value) {

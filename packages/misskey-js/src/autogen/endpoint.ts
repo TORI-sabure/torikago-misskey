@@ -538,6 +538,8 @@ import type {
 	NotesReactionsResponse,
 	NotesReactionsCreateRequest,
 	NotesReactionsDeleteRequest,
+	NotesRecommendedTimelineRequest,
+	NotesRecommendedTimelineResponse,
 	NotesRenotesRequest,
 	NotesRenotesResponse,
 	NotesRepliesRequest,
@@ -1031,6 +1033,7 @@ export type Endpoints = {
 	'notes/reactions': { req: NotesReactionsRequest; res: NotesReactionsResponse };
 	'notes/reactions/create': { req: NotesReactionsCreateRequest; res: EmptyResponse };
 	'notes/reactions/delete': { req: NotesReactionsDeleteRequest; res: EmptyResponse };
+	'notes/recommended-timeline': { req: NotesRecommendedTimelineRequest; res: NotesRecommendedTimelineResponse };
 	'notes/renotes': { req: NotesRenotesRequest; res: NotesRenotesResponse };
 	'notes/replies': { req: NotesRepliesRequest; res: NotesRepliesResponse };
 	'notes/search': { req: NotesSearchRequest; res: NotesSearchResponse };

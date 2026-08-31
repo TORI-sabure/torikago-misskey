@@ -161,6 +161,7 @@ export class MetaEntityService {
 			features: {
 				localTimeline: instance.policies.ltlAvailable,
 				globalTimeline: instance.policies.gtlAvailable,
+				recommendedTimeline: instance.enableRecommendedTimeline,
 				registration: !instance.disableRegistration,
 				emailRequiredForSignup: instance.emailRequiredForSignup,
 				hcaptcha: instance.enableHcaptcha,
@@ -175,4 +176,3 @@ export class MetaEntityService {
 		return packDetailed;
 	}
 }
-

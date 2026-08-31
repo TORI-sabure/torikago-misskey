@@ -175,6 +175,15 @@ SPDX-License-Identifier: AGPL-3.0-only
 								</MkPreferenceContainer>
 							</SearchMarker>
 
+							<SearchMarker :keywords="['recommended', 'timeline', 'following', 'おすすめ', 'タイムライン', 'フォロー']">
+								<MkPreferenceContainer k="includeFollowingInRecommendedTimeline">
+									<MkSwitch v-model="includeFollowingInRecommendedTimeline">
+										<template #label><SearchLabel>{{ recommendedFollowingLabel }}</SearchLabel></template>
+										<template #caption><SearchText>{{ recommendedFollowingCaption }}</SearchText></template>
+									</MkSwitch>
+								</MkPreferenceContainer>
+							</SearchMarker>
+
 							<SearchMarker :keywords="['renote', 'visibility', 'public', 'home', 'followers', 'リノート', '公開範囲']">
 								<MkPreferenceContainer k="enableRenoteVisibilitySelection">
 									<MkSwitch v-model="enableRenoteVisibilitySelection">
@@ -955,6 +964,37 @@ const enableRenoteVisibilitySelection = prefer.model('enableRenoteVisibilitySele
 const advancedMfm = prefer.model('advancedMfm');
 const showReactionsCount = prefer.model('showReactionsCount');
 const showMutualAccountBadge = prefer.model('showMutualAccountBadge');
+const includeFollowingInRecommendedTimeline = prefer.model('includeFollowingInRecommendedTimeline');
+
+const recommendedFollowingTexts: Record<string, { label: string; caption: string }> = {
+	'en-US': {
+		label: 'Show posts from accounts you follow in the recommended timeline',
+		caption: 'When enabled, the recommended timeline also includes Home timeline posts except specified posts.',
+	},
+	'ja-JP': {
+		label: 'おすすめタイムラインにフォロー中のアカウントの投稿も表示する',
+		caption: 'オンにすると、公開範囲が「指名」の投稿を除き、ホームタイムラインの投稿もおすすめタイムラインに表示します。',
+	},
+	'ja-KS': {
+		label: 'おすすめタイムラインにフォロー中のアカウントの投稿も出す',
+		caption: 'オンにしたら、公開範囲が「指名」の投稿以外は、ホームタイムラインの投稿もおすすめに出すで。',
+	},
+	'ko-KR': {
+		label: '추천 타임라인에 팔로우 중인 계정의 게시물도 표시',
+		caption: '켜면 지정 공개 게시물을 제외한 홈 타임라인 게시물도 추천 타임라인에 표시합니다.',
+	},
+	'zh-CN': {
+		label: '在推荐时间线中也显示已关注账号的帖子',
+		caption: '启用后，除指定可见帖子外，首页时间线的帖子也会显示在推荐时间线中。',
+	},
+	'zh-TW': {
+		label: '在推薦時間軸中也顯示已追蹤帳號的貼文',
+		caption: '啟用後，除指定可見貼文外，首頁時間軸的貼文也會顯示於推薦時間軸。',
+	},
+};
+const recommendedFollowingText = recommendedFollowingTexts[currentLang] ?? recommendedFollowingTexts['en-US']!;
+const recommendedFollowingLabel = recommendedFollowingText.label;
+const recommendedFollowingCaption = recommendedFollowingText.caption;
 const enableQuickAddMfmFunction = prefer.model('enableQuickAddMfmFunction');
 const forceShowAds = prefer.model('forceShowAds');
 const loadRawImages = prefer.model('loadRawImages');
