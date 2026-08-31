@@ -403,6 +403,10 @@ export const meta = {
 				type: 'boolean',
 				optional: false, nullable: false,
 			},
+			collectRecommendedTimelineNotes: {
+				type: 'boolean',
+				optional: false, nullable: false,
+			},
 			recommendedTimelineForcedWords: {
 				type: 'array',
 				optional: false, nullable: false,
@@ -764,6 +768,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				enableFanoutTimeline: instance.enableFanoutTimeline,
 				enableFanoutTimelineDbFallback: instance.enableFanoutTimelineDbFallback,
 				enableRecommendedTimeline: instance.enableRecommendedTimeline,
+				collectRecommendedTimelineNotes: instance.collectRecommendedTimelineNotes,
 				recommendedTimelineForcedWords: instance.recommendedTimelineForcedWords,
 				perLocalUserUserTimelineCacheMax: instance.perLocalUserUserTimelineCacheMax,
 				perRemoteUserUserTimelineCacheMax: instance.perRemoteUserUserTimelineCacheMax,

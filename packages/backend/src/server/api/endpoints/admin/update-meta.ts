@@ -159,6 +159,7 @@ export const paramDef = {
 		enableFanoutTimeline: { type: 'boolean' },
 		enableFanoutTimelineDbFallback: { type: 'boolean' },
 		enableRecommendedTimeline: { type: 'boolean' },
+		collectRecommendedTimelineNotes: { type: 'boolean' },
 		recommendedTimelineForcedWords: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 64 } },
 		perLocalUserUserTimelineCacheMax: { type: 'integer' },
 		perRemoteUserUserTimelineCacheMax: { type: 'integer' },
@@ -686,6 +687,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 			if (ps.enableRecommendedTimeline !== undefined) {
 				set.enableRecommendedTimeline = ps.enableRecommendedTimeline;
+			}
+
+			if (ps.collectRecommendedTimelineNotes !== undefined) {
+				set.collectRecommendedTimelineNotes = ps.collectRecommendedTimelineNotes;
 			}
 
 			if (ps.recommendedTimelineForcedWords !== undefined) {

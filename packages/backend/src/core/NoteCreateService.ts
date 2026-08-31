@@ -776,6 +776,7 @@ export class NoteCreateService implements OnApplicationShutdown {
 		// Increment notes count (user)
 		this.incNotesCountOfUser(user);
 
+		this.collectRecommendedTimelineCandidate(note);
 		this.pushToTl(note, user);
 
 		this.antennaService.addNoteToAntennas({
@@ -1062,6 +1063,18 @@ export class NoteCreateService implements OnApplicationShutdown {
 		);
 
 		return mentionedUsers;
+	}
+
+	@bindThis
+	private collectRecommendedTimelineCandidate(note: MiNote): void {
+		if (!this.meta.collectRecommendedTimelineNotes) return;
+		if (note.channelId != null) return;
+		if (note.visibility !== 'public' && !(note.visibility === 'home' && note.tags.length > 0)) return;
+
+		const pipeline = this.redisForTimelines.pipeline();
+		pipeline.lpush('torikago:recommended:candidates', note.id);
+		pipeline.ltrim('torikago:recommended:candidates', 0, 2999);
+		void pipeline.exec().catch(() => undefined);
 	}
 
 	@bindThis

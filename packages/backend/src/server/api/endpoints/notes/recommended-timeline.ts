@@ -18,6 +18,7 @@ import { IdService } from '@/core/IdService.js';
 const RESULT_LIMIT = 100;
 const TWO_HOP_AUTHOR_LIMIT = 80;
 const CANDIDATE_LIMIT = 400;
+const CANDIDATE_POOL_LIMIT = 3000;
 const CANDIDATE_AGE_MS = 24 * 60 * 60 * 1000;
 const RESULT_TTL_SECONDS = 10 * 60;
 const SEEN_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -69,6 +70,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		private noteFavoritesRepository: NoteFavoritesRepository,
 		@Inject(DI.redis)
 		private redisClient: Redis.Redis,
+		@Inject(DI.redisForTimelines)
+		private redisForTimelines: Redis.Redis,
 		private queryService: QueryService,
 		private noteEntityService: NoteEntityService,
 		private idService: IdService,
@@ -103,6 +106,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	}
 
 	private async buildRecommendation(me: MiLocalUser, includeFollowing: boolean, withFiles: boolean): Promise<string[]> {
+		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', 0, CANDIDATE_POOL_LIMIT - 1);
 		const directRows = await this.followingsRepository.find({
 			select: { followeeId: true },
 			where: { followerId: me.id },
@@ -124,6 +128,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const discoveryIds = twoHopRows.map(row => row.userId);
 		const authorIds = [...new Set([...(includeFollowing ? directIds : []), ...discoveryIds])];
 		if (authorIds.length === 0) return [];
+		if (candidateIds.length === 0 && (!includeFollowing || directIds.length === 0)) return [];
 
 		const [reactionAffinityRows, favoriteAffinityRows, renoteAffinityRows] = await Promise.all([
 			this.noteReactionsRepository.createQueryBuilder('reaction')
@@ -162,14 +167,22 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			.leftJoinAndSelect('reply.user', 'replyUser')
 			.leftJoinAndSelect('note.renote', 'renote')
 			.leftJoinAndSelect('renote.user', 'renoteUser')
-			.where('note.userId IN (:...authorIds)', { authorIds })
+			.where(new Brackets(qb => {
+				if (candidateIds.length > 0) qb.where('note.id IN (:...candidateIds)', { candidateIds });
+				if (includeFollowing && directIds.length > 0) {
+					const params = { directIds, oldestId: this.idService.gen(Date.now() - CANDIDATE_AGE_MS) };
+					if (candidateIds.length > 0) qb.orWhere('note.userId IN (:...directIds) AND note.id >= :oldestId', params);
+					else qb.where('note.userId IN (:...directIds) AND note.id >= :oldestId', params);
+				}
+			}))
+			.andWhere('note.userId IN (:...authorIds)', { authorIds })
 			.andWhere('note.channelId IS NULL')
-			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - CANDIDATE_AGE_MS) })
 			.andWhere('note.visibility != :specified', { specified: 'specified' })
 			.andWhere(new Brackets(qb => {
-				qb.where('note.userId IN (:...discoveryIds) AND note.visibility = :public', {
+				qb.where('note.userId IN (:...discoveryIds) AND (note.visibility = :public OR (note.visibility = :home AND note.tags != \'{}\'))', {
 					discoveryIds: discoveryIds.length > 0 ? discoveryIds : [''],
 					public: 'public',
+					home: 'home',
 				});
 				if (includeFollowing && directIds.length > 0) qb.orWhere('note.userId IN (:...directIds)', { directIds });
 			}))

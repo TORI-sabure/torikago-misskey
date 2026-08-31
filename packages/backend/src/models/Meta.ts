@@ -609,6 +609,11 @@ export class MiMeta {
 	})
 	public enableRecommendedTimeline: boolean;
 
+	@Column('boolean', {
+		default: false,
+	})
+	public collectRecommendedTimelineNotes: boolean;
+
 	@Column('varchar', {
 		length: 64,
 		array: true,

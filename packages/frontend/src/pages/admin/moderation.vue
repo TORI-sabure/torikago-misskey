@@ -13,7 +13,11 @@ SPDX-License-Identifier: AGPL-3.0-only
 						<template #label><SearchLabel>{{ recommendedTimelineAdminText.label }}</SearchLabel></template>
 						<template #caption><SearchText>{{ recommendedTimelineAdminText.caption }}</SearchText></template>
 					</MkSwitch>
-					<MkFolder v-if="enableRecommendedTimeline" style="margin-top: 12px;">
+					<MkSwitch v-model="collectRecommendedTimelineNotes" style="margin-top: 12px;" @change="onChange_collectRecommendedTimelineNotes">
+						<template #label><SearchLabel>{{ recommendedTimelineAdminText.collectLabel }}</SearchLabel></template>
+						<template #caption><SearchText>{{ recommendedTimelineAdminText.collectCaption }}</SearchText></template>
+					</MkSwitch>
+					<MkFolder v-if="enableRecommendedTimeline || collectRecommendedTimelineNotes" style="margin-top: 12px;">
 						<template #label>{{ recommendedTimelineAdminText.forcedWords }}</template>
 						<div class="_gaps_s">
 							<MkTextarea v-model="recommendedTimelineForcedWords">
@@ -211,14 +215,15 @@ const blockedHosts = ref(meta.blockedHosts.join('\n'));
 const silencedHosts = ref(meta.silencedHosts?.join('\n') ?? '');
 const mediaSilencedHosts = ref(meta.mediaSilencedHosts.join('\n'));
 const enableRecommendedTimeline = ref((meta as typeof meta & { enableRecommendedTimeline?: boolean }).enableRecommendedTimeline ?? false);
+const collectRecommendedTimelineNotes = ref((meta as typeof meta & { collectRecommendedTimelineNotes?: boolean }).collectRecommendedTimelineNotes ?? false);
 const recommendedTimelineForcedWords = ref(((meta as typeof meta & { recommendedTimelineForcedWords?: string[] }).recommendedTimelineForcedWords ?? []).join('\n'));
-const recommendedTimelineAdminTexts: Record<string, { label: string; caption: string; forcedWords: string; forcedWordsCaption: string }> = {
-	'en-US': { label: 'Enable recommended timeline', caption: 'When disabled, users cannot open the recommended timeline and no recommendation results are generated.', forcedWords: 'Always-recommend words', forcedWordsCaption: 'One plain-text word per line. Visibility, mute, and block rules are never bypassed.' },
-	'ja-JP': { label: 'おすすめタイムラインを有効にする', caption: '無効にすると、ユーザーはおすすめタイムラインを利用できず、おすすめ結果も生成されません。', forcedWords: '必ずおすすめに含めるワード', forcedWordsCaption: '1行に1つ、通常の文字列として指定します。公開範囲・ミュート・ブロックは常に優先されます。' },
-	'ja-KS': { label: 'おすすめタイムラインを有効にする', caption: '無効にしたら、ユーザーはおすすめタイムラインを使えへんし、おすすめ結果も作られへんで。', forcedWords: '必ずおすすめに入れる言葉', forcedWordsCaption: '1行に1つずつ書いてな。公開範囲・ミュート・ブロックはいつでも優先やで。' },
-	'ko-KR': { label: '추천 타임라인 활성화', caption: '비활성화하면 사용자가 추천 타임라인을 열 수 없고 추천 결과도 생성되지 않습니다.', forcedWords: '항상 추천에 포함할 단어', forcedWordsCaption: '한 줄에 일반 텍스트 하나를 입력하세요. 공개 범위, 뮤트 및 차단 규칙은 항상 우선합니다.' },
-	'zh-CN': { label: '启用推荐时间线', caption: '禁用后，用户无法打开推荐时间线，也不会生成推荐结果。', forcedWords: '始终推荐的词语', forcedWordsCaption: '每行输入一个纯文本词语。可见范围、静音和屏蔽规则始终优先。' },
-	'zh-TW': { label: '啟用推薦時間軸', caption: '停用後，使用者無法開啟推薦時間軸，也不會產生推薦結果。', forcedWords: '一律推薦的詞語', forcedWordsCaption: '每行輸入一個純文字詞語。可見範圍、靜音與封鎖規則永遠優先。' },
+const recommendedTimelineAdminTexts: Record<string, { label: string; caption: string; collectLabel: string; collectCaption: string; forcedWords: string; forcedWordsCaption: string }> = {
+	'en-US': { label: 'Enable recommended timeline', caption: 'Controls whether users can open the recommended timeline.', collectLabel: 'Collect notes for recommendations', collectCaption: 'Collects candidates even while the timeline is hidden, so it can be prepared before launch. Public notes and home notes with hashtags are eligible.', forcedWords: 'Always-recommend words', forcedWordsCaption: 'One plain-text word per line. Visibility, mute, and block rules are never bypassed.' },
+	'ja-JP': { label: 'おすすめタイムラインを有効にする', caption: 'ユーザーがおすすめタイムラインを開けるかどうかを設定します。', collectLabel: 'おすすめ用のノートを収集する', collectCaption: 'タイムラインを非公開にしたまま候補を収集し、公開前に準備できます。パブリックのノートと、ハッシュタグ付きのホーム公開ノートが対象です。', forcedWords: '必ずおすすめに含めるワード', forcedWordsCaption: '1行に1つ、通常の文字列として指定します。公開範囲・ミュート・ブロックは常に優先されます。' },
+	'ja-KS': { label: 'おすすめタイムラインを有効にする', caption: 'みんながおすすめタイムラインを開けるかどうか決めるで。', collectLabel: 'おすすめ用のノートを集める', collectCaption: 'タイムラインをまだ見せんと候補だけ集めて、公開前に準備できるで。パブリックのノートと、ハッシュタグ付きのホーム公開ノートが対象や。', forcedWords: '必ずおすすめに入れる言葉', forcedWordsCaption: '1行に1つずつ書いてな。公開範囲・ミュート・ブロックはいつでも優先やで。' },
+	'ko-KR': { label: '추천 타임라인 활성화', caption: '사용자가 추천 타임라인을 열 수 있는지 설정합니다.', collectLabel: '추천용 노트 수집', collectCaption: '타임라인을 숨긴 상태에서도 후보를 수집하여 공개 전에 준비할 수 있습니다. 공개 노트와 해시태그가 있는 홈 노트가 대상입니다.', forcedWords: '항상 추천에 포함할 단어', forcedWordsCaption: '한 줄에 일반 텍스트 하나를 입력하세요. 공개 범위, 뮤트 및 차단 규칙은 항상 우선합니다.' },
+	'zh-CN': { label: '启用推荐时间线', caption: '设置用户是否可以打开推荐时间线。', collectLabel: '收集推荐候选笔记', collectCaption: '即使时间线尚未公开也会收集候选，以便提前准备。公开笔记和带有话题标签的首页笔记会被收集。', forcedWords: '始终推荐的词语', forcedWordsCaption: '每行输入一个纯文本词语。可见范围、静音和屏蔽规则始终优先。' },
+	'zh-TW': { label: '啟用推薦時間軸', caption: '設定使用者是否可以開啟推薦時間軸。', collectLabel: '收集推薦候選貼文', collectCaption: '即使時間軸尚未公開也會收集候選，以便事先準備。公開貼文及帶有主題標籤的首頁貼文會被收集。', forcedWords: '一律推薦的詞語', forcedWordsCaption: '每行輸入一個純文字詞語。可見範圍、靜音與封鎖規則永遠優先。' },
 };
 const recommendedTimelineAdminText = recommendedTimelineAdminTexts[window.document.documentElement.lang] ?? recommendedTimelineAdminTexts['en-US']!;
 
@@ -251,6 +256,14 @@ function onChange_emailRequiredForSignup(value: boolean) {
 function onChange_enableRecommendedTimeline(value: boolean) {
 	os.apiWithDialog('admin/update-meta', {
 		enableRecommendedTimeline: value,
+	} as never).then(() => {
+		fetchInstance(true);
+	});
+}
+
+function onChange_collectRecommendedTimelineNotes(value: boolean) {
+	os.apiWithDialog('admin/update-meta', {
+		collectRecommendedTimelineNotes: value,
 	} as never).then(() => {
 		fetchInstance(true);
 	});
