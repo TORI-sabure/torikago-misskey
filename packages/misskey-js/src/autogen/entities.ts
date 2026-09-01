@@ -544,10 +544,19 @@ export type NotesReactionsDeleteRequest = operations['notes___reactions___delete
 export type NotesRecommendedTimelineRequest = {
 	limit?: number;
 	untilId?: string;
+	snapshotId: string;
 	includeFollowing?: boolean;
 	withFiles?: boolean;
+	withSensitive?: boolean;
 };
 export type NotesRecommendedTimelineResponse = components['schemas']['Note'][];
+export type NotesRecommendedTimelineHasNewRequest = {
+	snapshotId: string;
+	includeFollowing?: boolean;
+};
+export type NotesRecommendedTimelineHasNewResponse = {
+	hasNew: boolean;
+};
 export type NotesRenotesRequest = operations['notes___renotes']['requestBody']['content']['application/json'];
 export type NotesRenotesResponse = operations['notes___renotes']['responses']['200']['content']['application/json'];
 export type NotesRepliesRequest = operations['notes___replies']['requestBody']['content']['application/json'];
