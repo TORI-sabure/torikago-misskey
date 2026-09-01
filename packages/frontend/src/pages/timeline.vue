@@ -101,15 +101,15 @@ const mutualTimelineText = mutualTimelineTexts[lang] ?? mutualTimelineTexts['en-
 const recommendedTimelineTexts: Record<string, { title: string; description: string }> = {
 	'en-US': {
 		title: 'For you',
-		description: 'The recommended timeline shows recent posts selected from accounts followed by people you follow. Posts you have already seen are normally not shown again.',
+		description: 'The recommended timeline combines posts from your Home timeline with selected discoveries. It stays fixed until you choose to refresh it.',
 	},
 	'ja-JP': {
 		title: 'おすすめ',
-		description: 'おすすめタイムラインでは、あなたがフォローしている人のフォロー先を中心に、興味がありそうな最近の投稿を表示します。表示済みの投稿は通常、再表示されません。',
+		description: 'おすすめタイムラインでは、ホームタイムラインの投稿と、あなたが興味を持ちそうな投稿を組み合わせて表示します。自分で更新するまで内容は変わりません。',
 	},
 	'ja-KS': {
 		title: 'おすすめ',
-		description: 'おすすめタイムラインは、あんたがフォローしとる人のフォロー先を中心に、興味ありそうな最近の投稿を出すで。いっぺん見た投稿は、ふつうもう出えへんで。',
+		description: 'おすすめタイムラインは、ホームタイムラインの投稿と、あんたが興味ありそうな投稿を合わせて出すで。自分で更新するまで中身は変わらへんで。',
 	},
 	'ko-KR': {
 		title: '추천',
