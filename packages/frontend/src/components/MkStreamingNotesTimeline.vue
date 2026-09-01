@@ -10,6 +10,11 @@ SPDX-License-Identifier: AGPL-3.0-only
 	<MkError v-else-if="paginator.error.value" @retry="paginator.init()"/>
 
 	<div v-else-if="paginator.items.value.length === 0" key="_empty_">
+		<div v-if="props.src === 'recommended' && recommendedRefreshAvailable" :class="$style.new">
+			<div :class="$style.newBg1"></div>
+			<div :class="$style.newBg2"></div>
+			<button class="_button" :class="$style.newButton" @click="reloadTimeline()"><i class="ti ti-sparkles"></i> {{ recommendedText.newAvailable }}</button>
+		</div>
 		<slot name="empty"><MkResult type="empty" :text="i18n.ts.noNotes"/></slot>
 	</div>
 
@@ -289,7 +294,7 @@ const POLLING_INTERVAL =
 	prefer.s.pollingInterval === 3 ? MIN_POLLING_INTERVAL :
 	MIN_POLLING_INTERVAL;
 
-if (!store.s.realtimeMode) {
+if (!store.s.realtimeMode && props.src !== 'recommended') {
 	// TODO: 先頭のノートの作成日時が1日以上前であれば流速が遅いTLと見做してインターバルを通常より延ばす
 	useInterval(async () => {
 		paginator.fetchNewer({
@@ -362,7 +367,6 @@ const stream = store.s.realtimeMode ? useStream() : null;
 const connections = {
 	antenna: null as Misskey.IChannelConnection<Misskey.Channels['antenna']> | null,
 	homeTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
-	recommendedHomeTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
 	mutualTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
 	localTimeline: null as Misskey.IChannelConnection<Misskey.Channels['localTimeline']> | null,
 	hybridTimeline: null as Misskey.IChannelConnection<Misskey.Channels['hybridTimeline']> | null,
@@ -395,19 +399,6 @@ function connectChannel() {
 			mutualOnly: true,
 		} as unknown as Misskey.Channels['homeTimeline']['params']);
 		connections.mutualTimeline.on('note', prepend);
-	} else if (props.src === 'recommended') {
-		// Do not insert Home notes directly: the recommended timeline is a fixed
-		// snapshot. This lightweight subscription only tells the user that choosing
-		// to refresh can include newer Home content.
-		if (prefer.r.includeFollowingInRecommendedTimeline.value) {
-			connections.recommendedHomeTimeline = stream.useChannel('homeTimeline', {
-				withRenotes: props.withRenotes,
-				withFiles: props.onlyFiles ? true : undefined,
-			});
-			connections.recommendedHomeTimeline.on('note', () => {
-				recommendedRefreshAvailable.value = true;
-			});
-		}
 	} else if (props.src === 'local') {
 		connections.localTimeline = stream.useChannel('localTimeline', {
 			withRenotes: props.withRenotes,
