@@ -232,7 +232,7 @@ export const PREF_DEF = definePreferences({
 		default: false,
 	},
 	includeFollowingInRecommendedTimeline: {
-		default: true,
+		default: false,
 	},
 	enableQuickAddMfmFunction: {
 		default: false,
