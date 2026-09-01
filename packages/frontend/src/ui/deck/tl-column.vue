@@ -42,7 +42,7 @@ import { removeColumn, updateColumn } from '@/deck.js';
 import MkStreamingNotesTimeline from '@/components/MkStreamingNotesTimeline.vue';
 import * as os from '@/os.js';
 import { i18n } from '@/i18n.js';
-import { hasWithReplies, isAvailableBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
+import { basicTimelineLabel, hasWithReplies, isAvailableBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
 import { soundSettingsButton } from '@/ui/deck/tl-note-notification.js';
 import { lang } from '@@/js/config.js';
 
@@ -118,7 +118,9 @@ async function setType() {
 		title: i18n.ts.timeline,
 		items: [{
 			value: 'mutual', label: mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!,
-		}, {
+		}, ...(isAvailableBasicTimeline('recommended') ? [{
+			value: 'recommended' as const, label: basicTimelineLabel('recommended'),
+		}] : []), {
 			value: 'home', label: i18n.ts._timelines.home,
 		}, {
 			value: 'local', label: i18n.ts._timelines.local,
