@@ -412,6 +412,10 @@ export const meta = {
 				optional: false, nullable: false,
 				items: { type: 'string' },
 			},
+			recommendedTimelineSettings: {
+				type: 'object',
+				optional: false, nullable: false,
+			},
 			perLocalUserUserTimelineCacheMax: {
 				type: 'number',
 				optional: false, nullable: false,
@@ -770,6 +774,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				enableRecommendedTimeline: instance.enableRecommendedTimeline,
 				collectRecommendedTimelineNotes: instance.collectRecommendedTimelineNotes,
 				recommendedTimelineForcedWords: instance.recommendedTimelineForcedWords,
+				recommendedTimelineSettings: instance.recommendedTimelineSettings,
 				perLocalUserUserTimelineCacheMax: instance.perLocalUserUserTimelineCacheMax,
 				perRemoteUserUserTimelineCacheMax: instance.perRemoteUserUserTimelineCacheMax,
 				perUserHomeTimelineCacheMax: instance.perUserHomeTimelineCacheMax,
