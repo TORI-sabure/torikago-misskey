@@ -5,7 +5,7 @@
 
 import { $i } from '@/i.js';
 import { instance } from '@/instance.js';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { lang } from '@@/js/config.js';
 import { i18n } from '@/i18n.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
@@ -45,7 +45,10 @@ async function refreshRecommendedTimelineAvailability(): Promise<void> {
 	}
 }
 
-void refreshRecommendedTimelineAvailability();
+watch(() => (instance.features as typeof instance.features & { recommendedTimeline?: boolean } | undefined)?.recommendedTimeline, (enabled) => {
+	if (enabled === true) void refreshRecommendedTimelineAvailability();
+	else recommendedTimelineAvailable.value = false;
+}, { immediate: true });
 
 export function isBasicTimeline(timeline: string): timeline is BasicTimelineType {
 	return basicTimelineTypes.includes(timeline as BasicTimelineType);
