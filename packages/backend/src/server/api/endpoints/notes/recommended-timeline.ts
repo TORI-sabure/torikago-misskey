@@ -217,7 +217,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			.where('following.followerId IN (:...followingIds)', { followingIds }).andWhere('following.followeeId != :meId', { meId: me.id })
 			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(80).getRawMany();
 		const twoHopIds = twoHopRows.map(row => row.userId);
-		if (candidateIds.length === 0 && (!includeFollowing || directIds.length === 0)) return [];
+		// With the Home mix disabled, followed accounts are one of the
+		// recommendation sources. With it enabled, Home already supplies them.
+		if (candidateIds.length === 0 && (includeFollowing || directIds.length === 0)) return [];
 
 		const authorIds = [...new Set([...directIds, ...twoHopIds])];
 		const [reactionAffinityRows, favoriteAffinityRows, renoteAffinityRows] = authorIds.length === 0 ? [[], [], []] : await Promise.all([
@@ -242,7 +244,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// must not crowd out the Home-like portion of the timeline before scoring.
 		const noteLists = await Promise.all([
 			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
-			includeFollowing ? createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) }).getMany() : [],
+			!includeFollowing ? createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) }).getMany() : [],
 		]);
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
 		const fileIds = [...new Set(notes.flatMap(note => note.fileIds))];
@@ -255,7 +257,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const negativeAccounts = normalizedAccounts(settings.negativeAccounts);
 		const negativeWords = settings.negativeWords.map(word => word.toLocaleLowerCase());
 		const accountName = (note: typeof notes[number]) => `${note.user?.username ?? ''}${note.user?.host ? `@${note.user.host}` : ''}`.toLocaleLowerCase();
-		const scored = notes.filter(note => !seen.has(this.targetId(note))).map(note => {
+		const scored = notes.filter(note => !seen.has(this.targetId(note)))
+			.filter(note => !includeFollowing || !directSet.has(note.userId)).map(note => {
 			const source = directSet.has(note.userId) ? 'following' : twoHopProof.has(note.userId) ? 'twoHop' : 'unknown';
 			const reactions = Object.values(note.reactions).reduce((sum, count) => sum + count, 0);
 			const ageHours = Math.max(0, (now - this.idService.parse(note.id).date.getTime()) / 3600000);
@@ -272,7 +275,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const uniqueScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
 		const forced = uniqueScored.filter(item => item.forced).slice(0, settings.forcedLimit);
 		const forcedTargets = new Set(forced.map(item => item.targetId));
-		const selected = this.selectSources(uniqueScored.filter(item => !item.forced && !forcedTargets.has(item.targetId)), settings, includeFollowing);
+		const selected = this.selectSources(uniqueScored.filter(item => !item.forced && !forcedTargets.has(item.targetId)), settings, !includeFollowing);
 		// Forced rules are priority rules, not merely a score bonus. Keep these at the
 		// head of the fixed snapshot, then mix all regular sources below them.
 		return [...forced, ...this.interleave(selected, settings)].slice(0, settings.resultLimit).map(item => item.id);
