@@ -212,8 +212,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// Keep Home and discovery retrieval independent. A busy global candidate pool
 		// must not crowd out the Home-like portion of the timeline before scoring.
 		const noteLists = await Promise.all([
-			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id IN (:...candidateIds)', { candidateIds }).getMany() : [],
-			includeFollowing ? createVisibleQuery().andWhere('note.userId IN (:...directIds)').andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) }).getMany() : [],
+			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
+			includeFollowing ? createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) }).getMany() : [],
 		]);
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
 		const fileIds = [...new Set(notes.flatMap(note => note.fileIds))];
