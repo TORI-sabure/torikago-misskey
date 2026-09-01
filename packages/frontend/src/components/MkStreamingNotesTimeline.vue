@@ -127,6 +127,8 @@ provide('tl_withSensitive', computed(() => props.withSensitive));
 provide(DI.inChannel, computed(() => props.src === 'channel' ? props.channel ?? null : null));
 
 let paginator: IPaginator<Misskey.entities.Note>;
+let skipRecommendedParameterReload = false;
+let timelineReloadPromise: Promise<void> | null = null;
 const recommendedSnapshotKey = `${$i?.id ?? 'guest'}:recommended`;
 const recommendedSnapshotSessionKey = `torikago:recommended:snapshot:${recommendedSnapshotKey}`;
 const storedRecommendedSnapshotId = window.sessionStorage.getItem(recommendedSnapshotSessionKey);
@@ -245,6 +247,10 @@ onMounted(() => {
 
 	if (paginator.computedParams) {
 		watch(paginator.computedParams, () => {
+			if (props.src === 'recommended' && skipRecommendedParameterReload) {
+				skipRecommendedParameterReload = false;
+				return;
+			}
 			paginator.reload();
 		}, { immediate: false, deep: true });
 	}
@@ -489,9 +495,15 @@ onUnmounted(() => {
 });
 
 function reloadTimeline() {
-	return new Promise<void>((res) => {
+	if (timelineReloadPromise != null) return timelineReloadPromise;
+	timelineReloadPromise = (async () => {
 		adInsertionCounter = 0;
 		if (props.src === 'recommended') {
+			// Changing the snapshot parameters would normally trigger the generic
+			// computed-parameter watcher. This explicit reload is the one request
+			// that must own the transition, otherwise two responses append the same
+			// notes to the paginator.
+			skipRecommendedParameterReload = true;
 			previousRecommendedSnapshotId.value = recommendedSnapshotId.value;
 			previousRecommendedIncludeFollowing.value = prefer.r.includeFollowingInRecommendedTimeline.value;
 			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -500,10 +512,11 @@ function reloadTimeline() {
 			recommendedRefreshAvailable.value = false;
 		}
 
-		paginator.reload().then(() => {
-			res();
-		});
+		await paginator.reload();
+	})().finally(() => {
+		timelineReloadPromise = null;
 	});
+	return timelineReloadPromise;
 }
 
 defineExpose({
