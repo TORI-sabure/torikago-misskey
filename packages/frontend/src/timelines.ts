@@ -5,6 +5,10 @@
 
 import { $i } from '@/i.js';
 import { instance } from '@/instance.js';
+import { ref } from 'vue';
+import { lang } from '@@/js/config.js';
+import { i18n } from '@/i18n.js';
+import { misskeyApi } from '@/utility/misskey-api.js';
 
 export const basicTimelineTypes = [
 	'mutual',
@@ -16,6 +20,32 @@ export const basicTimelineTypes = [
 ] as const;
 
 export type BasicTimelineType = typeof basicTimelineTypes[number];
+
+const customTimelineLabels: Record<string, Partial<Record<BasicTimelineType, string>>> = {
+	'en-US': { mutual: 'Mutual', recommended: 'Recommended' },
+	'ja-JP': { mutual: '相互', recommended: 'おすすめ' },
+	'ja-KS': { mutual: '相互', recommended: 'おすすめ' },
+};
+
+export function basicTimelineLabel(timeline: BasicTimelineType): string {
+	return customTimelineLabels[lang]?.[timeline] ?? customTimelineLabels['en-US']?.[timeline] ?? i18n.ts._timelines[timeline];
+}
+
+// Test-user access is account-specific, so it must not be exposed in public
+// instance metadata. Start hidden and ask the authenticated API once per page.
+const recommendedTimelineAvailable = ref(false);
+
+async function refreshRecommendedTimelineAvailability(): Promise<void> {
+	if ($i == null || (instance.features as typeof instance.features & { recommendedTimeline?: boolean } | undefined)?.recommendedTimeline !== true) return;
+	try {
+		const result = await misskeyApi('notes/recommended-timeline-available');
+		recommendedTimelineAvailable.value = result.available;
+	} catch {
+		recommendedTimelineAvailable.value = false;
+	}
+}
+
+void refreshRecommendedTimelineAvailability();
 
 export function isBasicTimeline(timeline: string): timeline is BasicTimelineType {
 	return basicTimelineTypes.includes(timeline as BasicTimelineType);
@@ -45,7 +75,7 @@ export function isAvailableBasicTimeline(timeline: BasicTimelineType | undefined
 		case 'mutual':
 			return $i != null;
 		case 'recommended':
-			return $i != null && (instance.features as typeof instance.features & { recommendedTimeline?: boolean } | undefined)?.recommendedTimeline === true;
+			return $i != null && recommendedTimelineAvailable.value;
 		case 'local':
 			return ($i == null && instance.policies.ltlAvailable) || ($i != null && $i.policies.ltlAvailable);
 		case 'social':
