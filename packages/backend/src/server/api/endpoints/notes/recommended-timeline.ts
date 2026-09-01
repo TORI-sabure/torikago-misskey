@@ -133,6 +133,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				await pipeline.exec();
 			}
 
+			// Older snapshots may have been created before target-note de-duplication
+			// was added. Never render the same stored note twice while those snapshots
+			// naturally expire.
+			resultIds = [...new Set(resultIds)];
 			const offset = ps.untilId == null ? 0 : Math.max(0, resultIds.indexOf(ps.untilId) + 1);
 			const pageIds = resultIds.slice(offset, offset + ps.limit * 4);
 			if (pageIds.length === 0) return [];
@@ -148,7 +152,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const noteMap = new Map(notes.map(note => [note.id, note]));
 			const ordered = pageIds.map(id => noteMap.get(id)).filter(note => note != null)
 				.filter(note => ps.withSensitive || !note.fileIds.some(id => sensitiveFileIds.has(id))).slice(0, ps.limit);
-			await this.markSeen(me.id, ordered.map(note => this.targetId(note)), settings);
 			return await this.noteEntityService.packMany(ordered, me);
 		});
 	}
@@ -238,8 +241,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + Math.log1p(reactions) + 1.5 * Math.log1p(note.renoteCount) + (note.visibility === 'public' ? settings.publicBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) - (note.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (negative ? settings.negativePenalty : 0);
 			return { id: note.id, targetId: this.targetId(note), authorId: note.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 };
 		});
-		const forced = scored.filter(item => item.forced).sort((a, b) => b.quality - a.quality).slice(0, settings.forcedLimit);
-		const selected = this.selectSources(scored.filter(item => !item.forced), settings, includeFollowing);
+		// A plain renote and its original note represent one thing to the reader.
+		// Keep the stronger candidate before splitting forced and regular slots.
+		const uniqueScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
+		const forced = uniqueScored.filter(item => item.forced).slice(0, settings.forcedLimit);
+		const forcedTargets = new Set(forced.map(item => item.targetId));
+		const selected = this.selectSources(uniqueScored.filter(item => !item.forced && !forcedTargets.has(item.targetId)), settings, includeFollowing);
 		// Forced rules are priority rules, not merely a score bonus. Keep these at the
 		// head of the fixed snapshot, then mix all regular sources below them.
 		return [...forced, ...this.interleave(selected, settings)].slice(0, settings.resultLimit).map(item => item.id);
@@ -295,13 +302,4 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return note.renoteId != null && (note.text == null || note.text === '') ? note.renoteId : note.id;
 	}
 
-	private async markSeen(userId: string, noteIds: string[], settings: Settings): Promise<void> {
-		if (noteIds.length === 0) return;
-		const key = `torikago:recommended:seen:${userId}`; const now = Date.now(); const pipeline = this.redisClient.pipeline();
-		for (const id of noteIds) pipeline.zadd(key, now, id);
-		pipeline.zremrangebyscore(key, 0, now - settings.seenDays * 86400000); pipeline.expire(key, settings.seenDays * 86400);
-		await pipeline.exec();
-		const count = await this.redisClient.zcard(key);
-		if (count > settings.seenLimit) await this.redisClient.zremrangebyrank(key, 0, count - settings.seenLimit - 1);
-	}
 }
