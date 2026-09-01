@@ -63,6 +63,10 @@ const defaults: Settings = {
 	negativeAccounts: [],
 };
 
+// Increment when the ranking/seen semantics change so previously generated
+// snapshots and stale seen records cannot hide the corrected result set.
+const recommendationCacheVersion = 'v2';
+
 export const meta = {
 	tags: ['notes'],
 	requireCredential: true,
@@ -120,11 +124,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const allowedUserIds = this.serverSettings.recommendedTimelineAllowedUserIds ?? [];
 			if (allowedUserIds.length > 0 && !allowedUserIds.includes(me.id)) throw new ApiError(meta.errors.notAllowed);
 			const settings = this.settings();
-			const resultKey = `torikago:recommended:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
+			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
 			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 			if (resultIds.length === 0) {
 				if (ps.previousSnapshotId != null && ps.previousSnapshotId !== ps.snapshotId) {
-					const previousKey = `torikago:recommended:snapshot:${me.id}:${ps.previousSnapshotId}:${ps.previousIncludeFollowing ? 'home' : 'discovery'}`;
+					const previousKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:${ps.previousIncludeFollowing ? 'home' : 'discovery'}`;
 					const previousIds = await this.redisClient.lrange(previousKey, 0, -1);
 					if (previousIds.length > 0) {
 						const previousNotes = await this.notesRepository.find({ select: { id: true, renoteId: true, text: true }, where: { id: In(previousIds) } });
@@ -249,7 +253,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
 		const fileIds = [...new Set(notes.flatMap(note => note.fileIds))];
 		const sensitiveFileIds = new Set((await this.driveFilesRepository.find({ select: { id: true }, where: { id: In(fileIds), isSensitive: true } })).map(file => file.id));
-		const seen = new Set(await this.redisClient.zrangebyscore(`torikago:recommended:seen:${me.id}`, Date.now() - settings.seenDays * 86400000, '+inf'));
+		const seen = new Set(await this.redisClient.zrangebyscore(`torikago:recommended:${recommendationCacheVersion}:seen:${me.id}`, Date.now() - settings.seenDays * 86400000, '+inf'));
 		const forcedWords = (this.serverSettings.recommendedTimelineForcedWords ?? []).map(word => word.toLocaleLowerCase());
 		const now = Date.now();
 		const normalizedAccounts = (accounts: string[]) => new Set(accounts.map(x => x.trim().replace(/^@/, '').toLocaleLowerCase()).filter(Boolean));
@@ -333,7 +337,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 	private async markSeen(userId: string, noteIds: string[], settings: Settings): Promise<void> {
 		if (noteIds.length === 0) return;
-		const key = `torikago:recommended:seen:${userId}`;
+		const key = `torikago:recommended:${recommendationCacheVersion}:seen:${userId}`;
 		const now = Date.now();
 		const pipeline = this.redisClient.pipeline();
 		for (const id of noteIds) pipeline.zadd(key, now, id);
