@@ -550,6 +550,9 @@ export type NotesRecommendedTimelineRequest = {
 	withSensitive?: boolean;
 };
 export type NotesRecommendedTimelineResponse = components['schemas']['Note'][];
+export type NotesRecommendedTimelineAvailableResponse = {
+	available: boolean;
+};
 export type NotesRecommendedTimelineHasNewRequest = {
 	snapshotId: string;
 	includeFollowing?: boolean;
