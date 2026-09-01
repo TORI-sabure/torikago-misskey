@@ -968,28 +968,28 @@ const includeFollowingInRecommendedTimeline = prefer.model('includeFollowingInRe
 
 const recommendedFollowingTexts: Record<string, { label: string; caption: string }> = {
 	'en-US': {
-		label: 'Show posts from accounts you follow in the recommended timeline',
-		caption: 'When enabled, the recommended timeline also includes Home timeline posts. Specified posts addressed to you are included.',
+		label: 'Prioritize posts from accounts you follow in the recommended timeline',
+		caption: 'When enabled, posts from accounts you follow are prioritized in the recommended timeline.',
 	},
 	'ja-JP': {
-		label: 'おすすめタイムラインにフォロー中のアカウントの投稿も表示する',
-		caption: 'オンにすると、ホームタイムラインの投稿もおすすめタイムラインに表示します。自分宛ての指名投稿も含まれます。',
+		label: 'おすすめタイムラインにフォロー中のアカウントを優先表示する',
+		caption: 'オンにすると、フォロー中のアカウントの投稿をおすすめタイムラインで優先表示します。',
 	},
 	'ja-KS': {
-		label: 'おすすめタイムラインにフォロー中のアカウントの投稿も出す',
-		caption: 'オンにしたら、ホームタイムラインの投稿もおすすめに出すで。あんた宛ての指名投稿も入るで。',
+		label: 'おすすめタイムラインにフォローしとるアカウントを優先表示する',
+		caption: 'オンにしたら、フォローしとるアカウントの投稿をおすすめタイムラインで優先して出すで。',
 	},
 	'ko-KR': {
-		label: '추천 타임라인에 팔로우 중인 계정의 게시물도 표시',
-		caption: '켜면 지정 공개 게시물을 제외한 홈 타임라인 게시물도 추천 타임라인에 표시합니다.',
+		label: '추천 타임라인에서 팔로우 중인 계정의 게시물을 우선 표시',
+		caption: '활성화하면 팔로우 중인 계정의 게시물이 추천 타임라인에서 우선 표시됩니다.',
 	},
 	'zh-CN': {
-		label: '在推荐时间线中也显示已关注账号的帖子',
-		caption: '启用后，除指定可见帖子外，首页时间线的帖子也会显示在推荐时间线中。',
+		label: '在推荐时间线中优先显示已关注账号的帖子',
+		caption: '启用后，已关注账号的帖子将在推荐时间线中优先显示。',
 	},
 	'zh-TW': {
-		label: '在推薦時間軸中也顯示已追蹤帳號的貼文',
-		caption: '啟用後，除指定可見貼文外，首頁時間軸的貼文也會顯示於推薦時間軸。',
+		label: '在推薦時間軸中優先顯示已追蹤帳號的貼文',
+		caption: '啟用後，已追蹤帳號的貼文將在推薦時間軸中優先顯示。',
 	},
 };
 const recommendedFollowingText = recommendedFollowingTexts[currentLang] ?? recommendedFollowingTexts['en-US']!;
