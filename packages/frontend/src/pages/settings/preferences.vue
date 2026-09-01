@@ -969,15 +969,15 @@ const includeFollowingInRecommendedTimeline = prefer.model('includeFollowingInRe
 const recommendedFollowingTexts: Record<string, { label: string; caption: string }> = {
 	'en-US': {
 		label: 'Show posts from accounts you follow in the recommended timeline',
-		caption: 'When enabled, the recommended timeline also includes Home timeline posts except specified posts.',
+		caption: 'When enabled, the recommended timeline also includes Home timeline posts. Specified posts addressed to you are included.',
 	},
 	'ja-JP': {
 		label: 'おすすめタイムラインにフォロー中のアカウントの投稿も表示する',
-		caption: 'オンにすると、公開範囲が「指名」の投稿を除き、ホームタイムラインの投稿もおすすめタイムラインに表示します。',
+		caption: 'オンにすると、ホームタイムラインの投稿もおすすめタイムラインに表示します。自分宛ての指名投稿も含まれます。',
 	},
 	'ja-KS': {
 		label: 'おすすめタイムラインにフォロー中のアカウントの投稿も出す',
-		caption: 'オンにしたら、公開範囲が「指名」の投稿以外は、ホームタイムラインの投稿もおすすめに出すで。',
+		caption: 'オンにしたら、ホームタイムラインの投稿もおすすめに出すで。あんた宛ての指名投稿も入るで。',
 	},
 	'ko-KR': {
 		label: '추천 타임라인에 팔로우 중인 계정의 게시물도 표시',
