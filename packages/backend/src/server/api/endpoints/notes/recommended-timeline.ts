@@ -91,6 +91,8 @@ export const paramDef = {
 		limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
 		untilId: { type: 'string', format: 'misskey:id' },
 		snapshotId: { type: 'string', minLength: 8, maxLength: 128 },
+		previousSnapshotId: { type: 'string', minLength: 8, maxLength: 128 },
+		previousIncludeFollowing: { type: 'boolean', default: true },
 		includeFollowing: { type: 'boolean', default: true },
 		withFiles: { type: 'boolean', default: false },
 		withSensitive: { type: 'boolean', default: true },
@@ -121,6 +123,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const resultKey = `torikago:recommended:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
 			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 			if (resultIds.length === 0) {
+				if (ps.previousSnapshotId != null && ps.previousSnapshotId !== ps.snapshotId) {
+					const previousKey = `torikago:recommended:snapshot:${me.id}:${ps.previousSnapshotId}:${ps.previousIncludeFollowing ? 'home' : 'discovery'}`;
+					const previousIds = await this.redisClient.lrange(previousKey, 0, -1);
+					if (previousIds.length > 0) {
+						const previousNotes = await this.notesRepository.find({ select: { id: true, renoteId: true, text: true }, where: { id: In(previousIds) } });
+						await this.markSeen(me.id, previousNotes.map(note => this.targetId(note)), settings);
+					}
+				}
 				// The host has a known midnight load spike. Existing snapshots remain
 				// readable, but avoid starting the relatively expensive first ranking
 				// pass during this window. A later manual refresh will generate it.
@@ -134,9 +144,25 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			}
 
 			// Older snapshots may have been created before target-note de-duplication
-			// was added. Never render the same stored note twice while those snapshots
-			// naturally expire.
-			resultIds = [...new Set(resultIds)];
+			// was added. Normalize them once, including different pure renotes of the
+			// same original note, before pagination can expose a duplicate.
+			const snapshotNotes = resultIds.length === 0 ? [] : await this.notesRepository.find({ select: { id: true, renoteId: true, text: true }, where: { id: In(resultIds) } });
+			const snapshotNoteMap = new Map(snapshotNotes.map(note => [note.id, note]));
+			const snapshotTargets = new Set<string>();
+			const normalizedResultIds = resultIds.filter(id => {
+				const target = snapshotNoteMap.get(id);
+				const targetId = target == null ? id : this.targetId(target);
+				if (snapshotTargets.has(targetId)) return false;
+				snapshotTargets.add(targetId);
+				return true;
+			});
+			if (normalizedResultIds.length !== resultIds.length) {
+				resultIds = normalizedResultIds;
+				const pipeline = this.redisClient.pipeline().del(resultKey);
+				if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
+				pipeline.expire(resultKey, settings.snapshotHours * 3600);
+				await pipeline.exec();
+			}
 			const offset = ps.untilId == null ? 0 : Math.max(0, resultIds.indexOf(ps.untilId) + 1);
 			const pageIds = resultIds.slice(offset, offset + ps.limit * 4);
 			if (pageIds.length === 0) return [];
@@ -300,6 +326,19 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 	private targetId(note: { id: string; renoteId: string | null; text?: string | null }): string {
 		return note.renoteId != null && (note.text == null || note.text === '') ? note.renoteId : note.id;
+	}
+
+	private async markSeen(userId: string, noteIds: string[], settings: Settings): Promise<void> {
+		if (noteIds.length === 0) return;
+		const key = `torikago:recommended:seen:${userId}`;
+		const now = Date.now();
+		const pipeline = this.redisClient.pipeline();
+		for (const id of noteIds) pipeline.zadd(key, now, id);
+		pipeline.zremrangebyscore(key, 0, now - settings.seenDays * 86400000);
+		pipeline.expire(key, settings.seenDays * 86400);
+		await pipeline.exec();
+		const count = await this.redisClient.zcard(key);
+		if (count > settings.seenLimit) await this.redisClient.zremrangebyrank(key, 0, count - settings.seenLimit - 1);
 	}
 
 }
