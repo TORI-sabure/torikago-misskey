@@ -101,27 +101,27 @@ const mutualTimelineText = mutualTimelineTexts[lang] ?? mutualTimelineTexts['en-
 const recommendedTimelineTexts: Record<string, { title: string; description: string }> = {
 	'en-US': {
 		title: 'For you',
-		description: 'The recommended timeline combines posts from your Home timeline with selected discoveries. It stays fixed until you choose to refresh it.',
+		description: 'The recommended timeline shows posts you may be interested in.',
 	},
 	'ja-JP': {
 		title: 'おすすめ',
-		description: 'おすすめタイムラインでは、ホームタイムラインの投稿と、あなたが興味を持ちそうな投稿を組み合わせて表示します。自分で更新するまで内容は変わりません。',
+		description: 'おすすめタイムラインでは、あなたが興味を持ちそうな投稿が表示されます。',
 	},
 	'ja-KS': {
 		title: 'おすすめ',
-		description: 'おすすめタイムラインは、ホームタイムラインの投稿と、あんたが興味ありそうな投稿を合わせて出すで。自分で更新するまで中身は変わらへんで。',
+		description: 'おすすめタイムラインでは、あんたが興味持ちそうな投稿が出るで。',
 	},
 	'ko-KR': {
 		title: '추천',
-		description: '추천 타임라인에는 내가 팔로우하는 사람이 팔로우하는 계정을 중심으로 관심을 가질 만한 최근 게시물이 표시됩니다. 이미 표시된 게시물은 보통 다시 표시되지 않습니다.',
+		description: '추천 타임라인에는 관심을 가질 만한 게시물이 표시됩니다.',
 	},
 	'zh-CN': {
 		title: '推荐',
-		description: '推荐时间线会以你关注的人所关注的账号为主，显示你可能感兴趣的近期帖子。通常不会再次显示已经看过的帖子。',
+		description: '推荐时间线会显示你可能感兴趣的帖子。',
 	},
 	'zh-TW': {
 		title: '推薦',
-		description: '推薦時間軸會以你追蹤的人所追蹤的帳號為主，顯示你可能感興趣的近期貼文。通常不會再次顯示已看過的貼文。',
+		description: '推薦時間軸會顯示你可能感興趣的貼文。',
 	},
 };
 
