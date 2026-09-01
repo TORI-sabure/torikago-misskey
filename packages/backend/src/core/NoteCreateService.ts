@@ -776,7 +776,7 @@ export class NoteCreateService implements OnApplicationShutdown {
 		// Increment notes count (user)
 		this.incNotesCountOfUser(user);
 
-		this.collectRecommendedTimelineCandidate(note);
+		this.collectRecommendedTimelineCandidate(note, data);
 		this.pushToTl(note, user);
 
 		this.antennaService.addNoteToAntennas({
@@ -1066,14 +1066,22 @@ export class NoteCreateService implements OnApplicationShutdown {
 	}
 
 	@bindThis
-	private collectRecommendedTimelineCandidate(note: MiNote): void {
-		if (!this.meta.collectRecommendedTimelineNotes) return;
+	private collectRecommendedTimelineCandidate(note: MiNote, data: Option): void {
 		if (note.channelId != null) return;
-		if (note.visibility !== 'public' && !(note.visibility === 'home' && note.tags.length > 0)) return;
+		if (note.visibility !== 'public' && note.visibility !== 'home') return;
+		if (!this.meta.collectRecommendedTimelineNotes) return;
+		const isPublicRenoteByHomeUser = note.visibility === 'home'
+			&& this.isRenote(data)
+			&& !this.isQuote(data)
+			&& data.renote?.visibility === 'public';
+		if (note.visibility !== 'public' && !(note.visibility === 'home' && note.tags.length > 0) && !isPublicRenoteByHomeUser) return;
+		const configuredLimit = this.meta.recommendedTimelineSettings?.candidatePoolLimit;
+		const candidatePoolLimit = typeof configuredLimit === 'number' ? Math.max(100, Math.min(10000, Math.floor(configuredLimit))) : 3000;
 
 		const pipeline = this.redisForTimelines.pipeline();
+		pipeline.incr('torikago:recommended:version');
 		pipeline.lpush('torikago:recommended:candidates', note.id);
-		pipeline.ltrim('torikago:recommended:candidates', 0, 2999);
+		pipeline.ltrim('torikago:recommended:candidates', 0, candidatePoolLimit - 1);
 		void pipeline.exec().catch(() => undefined);
 	}
 
