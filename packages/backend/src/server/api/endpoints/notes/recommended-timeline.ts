@@ -73,6 +73,11 @@ export const meta = {
 			code: 'FEATURE_DISABLED',
 			id: '871d7f45-09fc-42ab-9060-9fd05d8f38dd',
 		},
+		notAllowed: {
+			message: 'Recommended timeline is not available for this user.',
+			code: 'FEATURE_NOT_AVAILABLE',
+			id: 'bd49fd24-aae2-482f-93ea-f62fa0c878b8',
+		},
 	},
 	res: {
 		type: 'array', optional: false, nullable: false,
@@ -110,6 +115,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	) {
 		super(meta, paramDef, async (ps, me) => {
 			if (!this.serverSettings.enableRecommendedTimeline) throw new ApiError(meta.errors.featureDisabled);
+			const allowedUserIds = this.serverSettings.recommendedTimelineAllowedUserIds ?? [];
+			if (allowedUserIds.length > 0 && !allowedUserIds.includes(me.id)) throw new ApiError(meta.errors.notAllowed);
 			const settings = this.settings();
 			const resultKey = `torikago:recommended:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
 			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
@@ -212,7 +219,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const fileIds = [...new Set(notes.flatMap(note => note.fileIds))];
 		const sensitiveFileIds = new Set((await this.driveFilesRepository.find({ select: { id: true }, where: { id: In(fileIds), isSensitive: true } })).map(file => file.id));
 		const seen = new Set(await this.redisClient.zrangebyscore(`torikago:recommended:seen:${me.id}`, Date.now() - settings.seenDays * 86400000, '+inf'));
-		const forcedWords = this.serverSettings.recommendedTimelineForcedWords.map(word => word.toLocaleLowerCase());
+		const forcedWords = (this.serverSettings.recommendedTimelineForcedWords ?? []).map(word => word.toLocaleLowerCase());
 		const now = Date.now();
 		const normalizedAccounts = (accounts: string[]) => new Set(accounts.map(x => x.trim().replace(/^@/, '').toLocaleLowerCase()).filter(Boolean));
 		const forcedAccounts = normalizedAccounts(settings.forcedAccounts);
