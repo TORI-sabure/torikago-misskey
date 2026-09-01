@@ -621,6 +621,11 @@ export class MiMeta {
 	})
 	public recommendedTimelineForcedWords: string[];
 
+	@Column('jsonb', {
+		default: () => "'{}'",
+	})
+	public recommendedTimelineSettings: Record<string, any>;
+
 	@Column('integer', {
 		default: 300,
 	})
