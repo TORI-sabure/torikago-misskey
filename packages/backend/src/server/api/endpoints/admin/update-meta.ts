@@ -160,6 +160,7 @@ export const paramDef = {
 		enableFanoutTimelineDbFallback: { type: 'boolean' },
 		enableRecommendedTimeline: { type: 'boolean' },
 		collectRecommendedTimelineNotes: { type: 'boolean' },
+		recommendedTimelineAllowedUserIds: { type: 'array', maxItems: 100, items: { type: 'string', format: 'misskey:id' } },
 		recommendedTimelineForcedWords: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 64 } },
 		recommendedTimelineSettings: { type: 'object' },
 		perLocalUserUserTimelineCacheMax: { type: 'integer' },
@@ -692,6 +693,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 			if (ps.collectRecommendedTimelineNotes !== undefined) {
 				set.collectRecommendedTimelineNotes = ps.collectRecommendedTimelineNotes;
+			}
+
+			if (ps.recommendedTimelineAllowedUserIds !== undefined) {
+				set.recommendedTimelineAllowedUserIds = [...new Set(ps.recommendedTimelineAllowedUserIds)];
 			}
 
 			if (ps.recommendedTimelineForcedWords !== undefined) {
