@@ -114,6 +114,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const resultKey = `torikago:recommended:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
 			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 			if (resultIds.length === 0) {
+				// The host has a known midnight load spike. Existing snapshots remain
+				// readable, but avoid starting the relatively expensive first ranking
+				// pass during this window. A later manual refresh will generate it.
+				if (this.isMidnightProtectionWindow()) return [];
 				resultIds = await this.buildRecommendation(me, ps.includeFollowing, settings);
 				const pipeline = this.redisClient.pipeline().del(resultKey);
 				if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
@@ -140,6 +144,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			await this.markSeen(me.id, ordered.map(note => this.targetId(note)), settings);
 			return await this.noteEntityService.packMany(ordered, me);
 		});
+	}
+
+	private isMidnightProtectionWindow(): boolean {
+		const now = new Date();
+		return now.getHours() === 0 && now.getMinutes() < 10;
 	}
 
 	private settings(): Settings {
