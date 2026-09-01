@@ -615,6 +615,13 @@ export class MiMeta {
 	public collectRecommendedTimelineNotes: boolean;
 
 	@Column('varchar', {
+		length: 32,
+		array: true,
+		default: '{}',
+	})
+	public recommendedTimelineAllowedUserIds: string[];
+
+	@Column('varchar', {
 		length: 64,
 		array: true,
 		default: '{}',
