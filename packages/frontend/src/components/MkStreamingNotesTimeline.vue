@@ -14,6 +14,11 @@ SPDX-License-Identifier: AGPL-3.0-only
 	</div>
 
 	<div v-else ref="rootEl">
+		<div v-if="props.src === 'recommended' && recommendedRefreshAvailable" :class="$style.new">
+			<div :class="$style.newBg1"></div>
+			<div :class="$style.newBg2"></div>
+			<button class="_button" :class="$style.newButton" @click="reloadTimeline()"><i class="ti ti-sparkles"></i> {{ recommendedText.newAvailable }}</button>
+		</div>
 		<div v-if="paginator.queuedAheadItemsCount.value > 0" :class="$style.new">
 			<div :class="$style.newBg1"></div>
 			<div :class="$style.newBg2"></div>
@@ -78,6 +83,18 @@ import { DI } from '@/di.js';
 import { globalEvents, useGlobalEvent } from '@/events.js';
 import { isSeparatorNeeded, getSeparatorInfo } from '@/utility/timeline-date-separate.js';
 import { Paginator } from '@/utility/paginator.js';
+import { misskeyApi } from '@/utility/misskey-api.js';
+
+const recommendedSnapshots = new Map<string, string>();
+const recommendedTexts: Record<string, { newAvailable: string }> = {
+	'en-US': { newAvailable: 'New recommendations are available' },
+	'ja-JP': { newAvailable: '新しいおすすめがあります' },
+	'ja-KS': { newAvailable: '新しいおすすめがあるで' },
+	'ko-KR': { newAvailable: '새로운 추천이 있습니다' },
+	'zh-CN': { newAvailable: '有新的推荐内容' },
+	'zh-TW': { newAvailable: '有新的推薦內容' },
+};
+const recommendedText = recommendedTexts[window.document.documentElement.lang] ?? recommendedTexts['en-US']!;
 
 const props = withDefaults(defineProps<{
 	src: BasicTimelineType | 'mentions' | 'directs' | 'list' | 'antenna' | 'channel' | 'role';
@@ -105,6 +122,10 @@ provide('tl_withSensitive', computed(() => props.withSensitive));
 provide(DI.inChannel, computed(() => props.src === 'channel' ? props.channel ?? null : null));
 
 let paginator: IPaginator<Misskey.entities.Note>;
+const recommendedSnapshotKey = `${$i?.id ?? 'guest'}:recommended`;
+const recommendedSnapshotId = ref(recommendedSnapshots.get(recommendedSnapshotKey) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
+const recommendedRefreshAvailable = ref(false);
 
 if (props.src === 'antenna') {
 	paginator = markRaw(new Paginator('antennas/notes', {
@@ -133,8 +154,10 @@ if (props.src === 'antenna') {
 } else if (props.src === 'recommended') {
 	paginator = markRaw(new Paginator('notes/recommended-timeline', {
 		computedParams: computed(() => ({
+			snapshotId: recommendedSnapshotId.value,
 			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
 			withFiles: props.onlyFiles ? true : undefined,
+			withSensitive: props.withSensitive,
 		})),
 		useShallowRef: true,
 	}));
@@ -286,7 +309,11 @@ if (!store.s.realtimeMode) {
 
 if (props.src === 'recommended') {
 	useInterval(async () => {
-		paginator.reload();
+		const result = await misskeyApi('notes/recommended-timeline-has-new', {
+			snapshotId: recommendedSnapshotId.value,
+			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+		});
+		recommendedRefreshAvailable.value = result.hasNew;
 	}, 60_000, {
 		immediate: false,
 		afterMounted: true,
@@ -335,6 +362,7 @@ const stream = store.s.realtimeMode ? useStream() : null;
 const connections = {
 	antenna: null as Misskey.IChannelConnection<Misskey.Channels['antenna']> | null,
 	homeTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
+	recommendedHomeTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
 	mutualTimeline: null as Misskey.IChannelConnection<Misskey.Channels['homeTimeline']> | null,
 	localTimeline: null as Misskey.IChannelConnection<Misskey.Channels['localTimeline']> | null,
 	hybridTimeline: null as Misskey.IChannelConnection<Misskey.Channels['hybridTimeline']> | null,
@@ -368,7 +396,18 @@ function connectChannel() {
 		} as unknown as Misskey.Channels['homeTimeline']['params']);
 		connections.mutualTimeline.on('note', prepend);
 	} else if (props.src === 'recommended') {
-		// Recommended results are ranked on demand and refreshed by the lightweight poller above.
+		// Do not insert Home notes directly: the recommended timeline is a fixed
+		// snapshot. This lightweight subscription only tells the user that choosing
+		// to refresh can include newer Home content.
+		if (prefer.r.includeFollowingInRecommendedTimeline.value) {
+			connections.recommendedHomeTimeline = stream.useChannel('homeTimeline', {
+				withRenotes: props.withRenotes,
+				withFiles: props.onlyFiles ? true : undefined,
+			});
+			connections.recommendedHomeTimeline.on('note', () => {
+				recommendedRefreshAvailable.value = true;
+			});
+		}
 	} else if (props.src === 'local') {
 		connections.localTimeline = stream.useChannel('localTimeline', {
 			withRenotes: props.withRenotes,
@@ -436,13 +475,13 @@ if (store.s.realtimeMode) {
 	connectChannel();
 }
 
-watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes], () => {
+watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes, prefer.r.includeFollowingInRecommendedTimeline.value], () => {
 	if (store.s.realtimeMode) {
 		disconnectChannel();
 		connectChannel();
 	}
 });
-watch(() => props.withSensitive, reloadTimeline);
+watch(() => props.withSensitive, () => paginator.reload());
 
 onUnmounted(() => {
 	disconnectChannel();
@@ -451,6 +490,11 @@ onUnmounted(() => {
 function reloadTimeline() {
 	return new Promise<void>((res) => {
 		adInsertionCounter = 0;
+		if (props.src === 'recommended') {
+			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+			recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
+			recommendedRefreshAvailable.value = false;
+		}
 
 		paginator.reload().then(() => {
 			res();
