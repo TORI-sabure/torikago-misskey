@@ -540,6 +540,7 @@ import type {
 	NotesReactionsDeleteRequest,
 	NotesRecommendedTimelineRequest,
 	NotesRecommendedTimelineResponse,
+	NotesRecommendedTimelineAvailableResponse,
 	NotesRecommendedTimelineHasNewRequest,
 	NotesRecommendedTimelineHasNewResponse,
 	NotesRenotesRequest,
@@ -1036,6 +1037,7 @@ export type Endpoints = {
 	'notes/reactions/create': { req: NotesReactionsCreateRequest; res: EmptyResponse };
 	'notes/reactions/delete': { req: NotesReactionsDeleteRequest; res: EmptyResponse };
 	'notes/recommended-timeline': { req: NotesRecommendedTimelineRequest; res: NotesRecommendedTimelineResponse };
+	'notes/recommended-timeline-available': { req: EmptyRequest; res: NotesRecommendedTimelineAvailableResponse };
 	'notes/recommended-timeline-has-new': { req: NotesRecommendedTimelineHasNewRequest; res: NotesRecommendedTimelineHasNewResponse };
 	'notes/renotes': { req: NotesRenotesRequest; res: NotesRenotesResponse };
 	'notes/replies': { req: NotesRepliesRequest; res: NotesRepliesResponse };
