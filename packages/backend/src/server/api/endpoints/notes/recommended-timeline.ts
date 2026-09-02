@@ -65,7 +65,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v4';
+const recommendationCacheVersion = 'v5';
 
 export const meta = {
 	tags: ['notes'],
@@ -280,9 +280,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const text = `${note.cw ?? ''}\n${note.text ?? ''}`.toLocaleLowerCase();
 			const isForced = forcedWords.some(word => text.includes(word)) || forcedAccounts.has(accountName(note));
 			const negative = negativeWords.some(word => text.includes(word)) || negativeAccounts.has(accountName(note));
-			const pureTwoHopRenote = source === 'twoHop' && note.renote != null && note.renote.visibility === 'public' && (note.text == null || note.text === '');
+			const plainPublicRenote = note.renote != null && note.renote.visibility === 'public' && (note.text == null || note.text === '');
+			const pureTwoHopRenote = source === 'twoHop' && plainPublicRenote;
+			// A Home renote is only a recommendation signal. Show its public original
+			// directly so the reader does not see a redundant renote wrapper.
+			const displayId = note.visibility === 'home' && plainPublicRenote ? note.renoteId! : note.id;
 			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + Math.log1p(reactions) + 1.5 * Math.log1p(note.renoteCount) + (note.visibility === 'public' ? settings.publicBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) - (note.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (negative ? settings.negativePenalty : 0);
-			return { id: note.id, targetId: this.targetId(note), authorId: note.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 };
+			return { id: note.id, displayId, targetId: this.targetId(note), authorId: note.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 };
 		});
 		// A plain renote and its original note represent one thing to the reader.
 		// Keep the stronger candidate before splitting forced and regular slots.
@@ -296,7 +300,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const regular = includeFollowing
 			? [...selected.filter(item => item.source === 'following').sort((a, b) => b.id.localeCompare(a.id)), ...this.interleave(selected.filter(item => item.source !== 'following'), settings)]
 			: this.interleave(selected, settings);
-		return [...forced, ...regular].slice(0, settings.resultLimit).map(item => item.id);
+		return [...forced, ...regular].slice(0, settings.resultLimit).map(item => item.displayId);
 	}
 
 	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, includeFollowing: boolean): T[] {
