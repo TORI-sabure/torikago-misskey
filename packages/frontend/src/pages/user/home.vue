@@ -70,6 +70,9 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<MkButton small @click="editModerationNote = true">{{ i18n.ts.addModerationNote }}</MkButton>
 							</div>
 						</div>
+						<div v-if="$i && $i.id !== user.id" class="dislikedEmojiMemo">
+							<MkButton small @click="openDislikedEmojiMemo">{{ dislikedEmojiMemoLabel }}</MkButton>
+						</div>
 						<div v-if="isEditingMemo || memoDraft" class="memo" :class="{'no-memo': !memoDraft}">
 							<div class="heading">{{ i18n.ts.memo }}</div>
 							<textarea
@@ -187,6 +190,7 @@ import MkSparkle from '@/components/MkSparkle.vue';
 import { prefer } from '@/preferences.js';
 import MkPullToRefresh from '@/components/MkPullToRefresh.vue';
 import { isBirthday } from '@/utility/is-birthday.js';
+import { lang } from '@@/js/config.js';
 
 function calcAge(birthdate: string): number {
 	const date = new Date(birthdate);
@@ -230,6 +234,19 @@ const memoDraft = ref(props.user.memo);
 const isEditingMemo = ref(false);
 const moderationNote = ref(props.user.moderationNote ?? '');
 const editModerationNote = ref(false);
+const dislikedEmojiMemoLabels: Record<string, string> = {
+	'en-US': 'Memo disliked emojis', 'ja-JP': '苦手な絵文字をメモ', 'ja-KS': '苦手なツッコミをメモ',
+	'ko-KR': '싫어하는 이모지 메모', 'zh-CN': '记录不喜欢的表情', 'zh-TW': '記錄不喜歡的表情',
+	'de-DE': 'Unerwünschte Emojis notieren', 'fr-FR': 'Mémoriser les émojis indésirables',
+	'es-ES': 'Anotar emojis no deseados', 'pt-PT': 'Memorizar emojis indesejados',
+};
+const dislikedEmojiMemoLabel = dislikedEmojiMemoLabels[lang] ?? dislikedEmojiMemoLabels['en-US']!;
+
+function openDislikedEmojiMemo() {
+	const { dispose } = os.popup(defineAsyncComponent(() => import('@/components/MkDislikedEmojiMemoDialog.vue')), {
+		userId: user.value.id,
+	}, { closed: () => dispose() });
+}
 
 watch(moderationNote, async () => {
 	await misskeyApi('admin/update-user-note', { userId: props.user.id, text: moderationNote.value });
@@ -529,6 +546,10 @@ onDeactivated(disposeBannerParallaxResizeObserver);
 					margin: 12px 24px 0 154px;
 				}
 
+				> .dislikedEmojiMemo {
+					margin: 12px 24px 0 154px;
+				}
+
 				> .memo {
 					margin: 12px 24px 0 154px;
 					background: transparent;
@@ -703,6 +724,10 @@ onDeactivated(disposeBannerParallaxResizeObserver);
 				}
 
 				> .moderationNote {
+					margin: 16px 16px 0 16px;
+				}
+
+				> .dislikedEmojiMemo {
 					margin: 16px 16px 0 16px;
 				}
 

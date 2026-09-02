@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import type { UserMemoRepository } from '@/models/_.js';
+import { DI } from '@/di-symbols.js';
 import { Endpoint } from '@/server/api/endpoint-base.js';
 import { GetterService } from '@/server/api/GetterService.js';
 import { ReactionService } from '@/core/ReactionService.js';
@@ -66,6 +68,8 @@ export const paramDef = {
 @Injectable()
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export
 	constructor(
+		@Inject(DI.userMemosRepository)
+		private userMemosRepository: UserMemoRepository,
 		private cacheService: CacheService,
 		private getterService: GetterService,
 		private reactionService: ReactionService,
@@ -76,9 +80,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				throw err;
 			});
 			if (!ps.overrideDislikedEmoji && note.userId !== me.id) {
-				const profile = await this.cacheService.userProfileCache.fetch(note.userId);
+				const [profile, memo] = await Promise.all([
+					this.cacheService.userProfileCache.fetch(note.userId),
+					this.userMemosRepository.findOneBy({ userId: me.id, targetUserId: note.userId }),
+				]);
 				const reaction = normalizeDislikedEmoji(ps.reaction);
-				if (profile?.dislikedEmojis.some(emoji => normalizeDislikedEmoji(emoji) === reaction)) {
+				if (profile?.dislikedEmojis.some(emoji => normalizeDislikedEmoji(emoji) === reaction) ||
+					memo?.dislikedEmojis.some(emoji => normalizeDislikedEmoji(emoji) === reaction)) {
 					throw new ApiError(meta.errors.reactionIsDisliked);
 				}
 			}

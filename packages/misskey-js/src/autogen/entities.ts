@@ -1,5 +1,5 @@
 /* eslint @typescript-eslint/naming-convention: 0 */
-import { operations } from './types.js';
+import { components, operations } from './types.js';
 
 export type EmptyRequest = Record<string, unknown> | undefined;
 export type EmptyResponse = Record<string, unknown> | undefined;
@@ -541,6 +541,27 @@ export type NotesReactionsRequest = operations['notes___reactions']['requestBody
 export type NotesReactionsResponse = operations['notes___reactions']['responses']['200']['content']['application/json'];
 export type NotesReactionsCreateRequest = operations['notes___reactions___create']['requestBody']['content']['application/json'];
 export type NotesReactionsDeleteRequest = operations['notes___reactions___delete']['requestBody']['content']['application/json'];
+export type NotesRecommendedTimelineRequest = {
+	limit?: number;
+	untilId?: string;
+	snapshotId: string;
+	previousSnapshotId?: string;
+	previousIncludeFollowing?: boolean;
+	includeFollowing?: boolean;
+	withFiles?: boolean;
+	withSensitive?: boolean;
+};
+export type NotesRecommendedTimelineResponse = components['schemas']['Note'][];
+export type NotesRecommendedTimelineAvailableResponse = {
+	available: boolean;
+};
+export type NotesRecommendedTimelineHasNewRequest = {
+	snapshotId: string;
+	includeFollowing?: boolean;
+};
+export type NotesRecommendedTimelineHasNewResponse = {
+	hasNew: boolean;
+};
 export type NotesRenotesRequest = operations['notes___renotes']['requestBody']['content']['application/json'];
 export type NotesRenotesResponse = operations['notes___renotes']['responses']['200']['content']['application/json'];
 export type NotesRepliesRequest = operations['notes___replies']['requestBody']['content']['application/json'];

@@ -65,7 +65,7 @@ const props = withDefaults(defineProps<{
 
 const hashtagSearchPrefixOnlyLabels: Record<string, string> = {
 	'en-US': 'Only hashtags that start with your query are shown.',
-	'ja-JP': '入力した語で最初が一致しているものだけを表示します。',
+	'ja-JP': '入力した語と最初が一致しているものだけを表示します。',
 	'ja-KS': '打った言葉で最初が一緒のやつだけ出すで。',
 	'ko-KR': '입력한 단어로 시작하는 해시태그만 표시합니다.',
 	'ko-GS': '입력한 단어로 시작하는 해시태그만 표시합니다.',

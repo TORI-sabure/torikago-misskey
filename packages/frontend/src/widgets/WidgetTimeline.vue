@@ -47,7 +47,7 @@ import { misskeyApi } from '@/utility/misskey-api.js';
 import MkContainer from '@/components/MkContainer.vue';
 import MkStreamingNotesTimeline from '@/components/MkStreamingNotesTimeline.vue';
 import { i18n } from '@/i18n.js';
-import { availableBasicTimelines, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass, basicTimelineTypes } from '@/timelines.js';
+import { availableBasicTimelines, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass, basicTimelineLabel, basicTimelineTypes } from '@/timelines.js';
 
 const name = 'timeline';
 
@@ -98,7 +98,7 @@ const headerTitle = computed<string>(() => {
 	} else if (widgetProps.src === 'antenna') {
 		return widgetProps.antenna != null ? widgetProps.antenna.name : '?';
 	} else {
-		return i18n.ts._timelines[widgetProps.src] ?? '?';
+		return basicTimelineLabel(widgetProps.src);
 	}
 });
 
@@ -133,7 +133,7 @@ const choose = async (ev: PointerEvent) => {
 	const menuItems: MenuItem[] = [];
 
 	menuItems.push(...availableBasicTimelines().map(tl => ({
-		text: i18n.ts._timelines[tl],
+		text: basicTimelineLabel(tl),
 		icon: basicTimelineIconClass(tl),
 		action: () => { setSrc(tl); },
 	})));

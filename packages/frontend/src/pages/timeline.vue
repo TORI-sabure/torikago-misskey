@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <PageWithHeader v-model:tab="src" :actions="headerActions" :tabs="$i ? headerTabs : headerTabsWhenNotLogin" :swipable="true" :displayMyAvatar="true" :canOmitTitle="true">
 	<div class="_spacer" style="--MI_SPACER-w: 800px;">
 		<MkTip v-if="isBasicTimeline(src)" :k="`tl.${src}`" style="margin-bottom: var(--MI-margin);">
-			{{ src === 'mutual' ? mutualTimelineText.description : i18n.ts._timelineDescription[src] }}
+			{{ src === 'mutual' ? mutualTimelineText.description : src === 'recommended' ? recommendedTimelineText.description : i18n.ts._timelineDescription[src] }}
 		</MkTip>
 		<MkPostForm v-if="prefer.r.showFixedPostForm.value" :class="$style.postForm" class="_panel" fixed style="margin-bottom: var(--MI-margin);"/>
 		<MkStreamingNotesTimeline
@@ -43,7 +43,7 @@ import { antennasCache, userListsCache, favoritedChannelsCache } from '@/cache.j
 import { deviceKind } from '@/utility/device-kind.js';
 import { deepMerge } from '@/utility/merge.js';
 import { miLocalStorage } from '@/local-storage.js';
-import { availableBasicTimelines, hasWithReplies, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
+import { availableBasicTimelines, hasWithReplies, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass, recommendedTimelineAccessChecked } from '@/timelines.js';
 import { prefer } from '@/preferences.js';
 import { lang } from '@@/js/config.js';
 
@@ -97,6 +97,35 @@ const mutualTimelineTexts: Record<string, { title: string; description: string }
 };
 
 const mutualTimelineText = mutualTimelineTexts[lang] ?? mutualTimelineTexts['en-US']!;
+
+const recommendedTimelineTexts: Record<string, { title: string; description: string }> = {
+	'en-US': {
+		title: 'For you',
+		description: 'The recommended timeline shows posts you may be interested in.',
+	},
+	'ja-JP': {
+		title: 'おすすめ',
+		description: 'おすすめタイムラインでは、あなたが興味を持ちそうな投稿が表示されます。',
+	},
+	'ja-KS': {
+		title: 'おすすめ',
+		description: 'おすすめタイムラインでは、あんたが興味持ちそうな投稿が出るで。',
+	},
+	'ko-KR': {
+		title: '추천',
+		description: '추천 타임라인에는 관심을 가질 만한 게시물이 표시됩니다.',
+	},
+	'zh-CN': {
+		title: '推荐',
+		description: '推荐时间线会显示你可能感兴趣的帖子。',
+	},
+	'zh-TW': {
+		title: '推薦',
+		description: '推薦時間軸會顯示你可能感興趣的貼文。',
+	},
+};
+
+const recommendedTimelineText = recommendedTimelineTexts[lang] ?? recommendedTimelineTexts['en-US']!;
 
 type TimelinePageSrc = BasicTimelineType | `list:${string}`;
 
@@ -242,6 +271,10 @@ function saveTlFilter(key: keyof typeof store.s.tl.filter, newValue: boolean) {
 }
 
 function switchTlIfNeeded() {
+	// Recommended access is checked asynchronously for test-user restrictions.
+	// Do not overwrite the saved tab with the first available tab while that
+	// check is still in flight.
+	if (src.value === 'recommended' && !recommendedTimelineAccessChecked.value) return;
 	if (isBasicTimeline(src.value) && !isAvailableBasicTimeline(src.value)) {
 		src.value = availableBasicTimelines()[0];
 	}
@@ -251,6 +284,9 @@ onMounted(() => {
 	switchTlIfNeeded();
 });
 onActivated(() => {
+	switchTlIfNeeded();
+});
+watch(recommendedTimelineAccessChecked, () => {
 	switchTlIfNeeded();
 });
 
@@ -321,7 +357,7 @@ const headerTabs = computed(() => [...(prefer.r.pinnedUserLists.value.map(l => (
 	iconOnly: true,
 }))), ...availableBasicTimelines().map(tl => ({
 	key: tl,
-	title: tl === 'mutual' ? mutualTimelineText.title : i18n.ts._timelines[tl],
+	title: tl === 'mutual' ? mutualTimelineText.title : tl === 'recommended' ? recommendedTimelineText.title : i18n.ts._timelines[tl],
 	icon: basicTimelineIconClass(tl),
 	iconOnly: true,
 })), {

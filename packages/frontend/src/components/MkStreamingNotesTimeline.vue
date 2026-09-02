@@ -10,10 +10,20 @@ SPDX-License-Identifier: AGPL-3.0-only
 	<MkError v-else-if="paginator.error.value" @retry="paginator.init()"/>
 
 	<div v-else-if="paginator.items.value.length === 0" key="_empty_">
+		<div v-if="props.src === 'recommended' && recommendedRefreshAvailable" :class="$style.new">
+			<div :class="$style.newBg1"></div>
+			<div :class="$style.newBg2"></div>
+			<button class="_button" :class="$style.newButton" @click="reloadTimeline()"><i class="ti ti-sparkles"></i> {{ recommendedText.newAvailable }}</button>
+		</div>
 		<slot name="empty"><MkResult type="empty" :text="i18n.ts.noNotes"/></slot>
 	</div>
 
 	<div v-else ref="rootEl">
+		<div v-if="props.src === 'recommended' && recommendedRefreshAvailable" :class="$style.new">
+			<div :class="$style.newBg1"></div>
+			<div :class="$style.newBg2"></div>
+			<button class="_button" :class="$style.newButton" @click="reloadTimeline()"><i class="ti ti-sparkles"></i> {{ recommendedText.newAvailable }}</button>
+		</div>
 		<div v-if="paginator.queuedAheadItemsCount.value > 0" :class="$style.new">
 			<div :class="$style.newBg1"></div>
 			<div :class="$style.newBg2"></div>
@@ -78,6 +88,18 @@ import { DI } from '@/di.js';
 import { globalEvents, useGlobalEvent } from '@/events.js';
 import { isSeparatorNeeded, getSeparatorInfo } from '@/utility/timeline-date-separate.js';
 import { Paginator } from '@/utility/paginator.js';
+import { misskeyApi } from '@/utility/misskey-api.js';
+
+const recommendedSnapshots = new Map<string, string>();
+const recommendedTexts: Record<string, { newAvailable: string }> = {
+	'en-US': { newAvailable: 'New recommendations are available' },
+	'ja-JP': { newAvailable: '新しいおすすめがあります' },
+	'ja-KS': { newAvailable: '新しいおすすめがあるで' },
+	'ko-KR': { newAvailable: '새로운 추천이 있습니다' },
+	'zh-CN': { newAvailable: '有新的推荐内容' },
+	'zh-TW': { newAvailable: '有新的推薦內容' },
+};
+const recommendedText = recommendedTexts[window.document.documentElement.lang] ?? recommendedTexts['en-US']!;
 
 const props = withDefaults(defineProps<{
 	src: BasicTimelineType | 'mentions' | 'directs' | 'list' | 'antenna' | 'channel' | 'role';
@@ -105,6 +127,20 @@ provide('tl_withSensitive', computed(() => props.withSensitive));
 provide(DI.inChannel, computed(() => props.src === 'channel' ? props.channel ?? null : null));
 
 let paginator: IPaginator<Misskey.entities.Note>;
+let skipRecommendedParameterReload = false;
+let timelineReloadPromise: Promise<void> | null = null;
+const recommendedSnapshotKey = `${$i?.id ?? 'guest'}:recommended`;
+const recommendedSnapshotSessionKey = `torikago:recommended:snapshot:${recommendedSnapshotKey}`;
+const storedRecommendedSnapshotId = window.sessionStorage.getItem(recommendedSnapshotSessionKey);
+const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+const reloadsBrowser = navigationEntry?.type === 'reload';
+const initialRecommendedSnapshotId = recommendedSnapshots.get(recommendedSnapshotKey) ?? (reloadsBrowser ? null : storedRecommendedSnapshotId) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
+const previousRecommendedSnapshotId = ref(reloadsBrowser ? storedRecommendedSnapshotId : null);
+const previousRecommendedIncludeFollowing = ref(prefer.r.includeFollowingInRecommendedTimeline.value);
+recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
+window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
+const recommendedRefreshAvailable = ref(false);
 
 if (props.src === 'antenna') {
 	paginator = markRaw(new Paginator('antennas/notes', {
@@ -128,6 +164,21 @@ if (props.src === 'antenna') {
 			withFiles: props.onlyFiles ? true : undefined,
 			mutualOnly: true,
 		}) as unknown as Misskey.Endpoints['notes/timeline']['req']),
+		useShallowRef: true,
+	}));
+} else if (props.src === 'recommended') {
+	paginator = markRaw(new Paginator('notes/recommended-timeline', {
+		computedParams: computed(() => ({
+			snapshotId: recommendedSnapshotId.value,
+			previousSnapshotId: previousRecommendedSnapshotId.value ?? undefined,
+			previousIncludeFollowing: previousRecommendedIncludeFollowing.value,
+			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+			withFiles: props.onlyFiles ? true : undefined,
+			withSensitive: props.withSensitive,
+		})),
+		// The recommendation snapshot is score-ordered, not ID-ordered. Its next
+		// page must start after the last displayed snapshot entry.
+		getOlderId: () => paginator.items.value.at(-1)?.id,
 		useShallowRef: true,
 	}));
 } else if (props.src === 'local') {
@@ -199,6 +250,10 @@ onMounted(() => {
 
 	if (paginator.computedParams) {
 		watch(paginator.computedParams, () => {
+			if (props.src === 'recommended' && skipRecommendedParameterReload) {
+				skipRecommendedParameterReload = false;
+				return;
+			}
 			paginator.reload();
 		}, { immediate: false, deep: true });
 	}
@@ -258,7 +313,7 @@ const POLLING_INTERVAL =
 	prefer.s.pollingInterval === 3 ? MIN_POLLING_INTERVAL :
 	MIN_POLLING_INTERVAL;
 
-if (!store.s.realtimeMode) {
+if (!store.s.realtimeMode && props.src !== 'recommended') {
 	// TODO: 先頭のノートの作成日時が1日以上前であれば流速が遅いTLと見做してインターバルを通常より延ばす
 	useInterval(async () => {
 		paginator.fetchNewer({
@@ -273,6 +328,19 @@ if (!store.s.realtimeMode) {
 		paginator.fetchNewer({
 			toQueue: !isTop() || isPausingUpdate,
 		});
+	});
+}
+
+if (props.src === 'recommended') {
+	useInterval(async () => {
+		const result = await misskeyApi('notes/recommended-timeline-has-new', {
+			snapshotId: recommendedSnapshotId.value,
+			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+		});
+		recommendedRefreshAvailable.value = result.hasNew;
+	}, 60_000, {
+		immediate: false,
+		afterMounted: true,
 	});
 }
 
@@ -417,27 +485,41 @@ if (store.s.realtimeMode) {
 	connectChannel();
 }
 
-watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes], () => {
+watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes, prefer.r.includeFollowingInRecommendedTimeline.value], () => {
 	if (store.s.realtimeMode) {
 		disconnectChannel();
 		connectChannel();
 	}
 });
-watch(() => props.withSensitive, reloadTimeline);
-
+watch(() => props.withSensitive, () => paginator.reload());
 
 onUnmounted(() => {
 	disconnectChannel();
 });
 
 function reloadTimeline() {
-	return new Promise<void>((res) => {
+	if (timelineReloadPromise != null) return timelineReloadPromise;
+	timelineReloadPromise = (async () => {
 		adInsertionCounter = 0;
+		if (props.src === 'recommended') {
+			// Changing the snapshot parameters would normally trigger the generic
+			// computed-parameter watcher. This explicit reload is the one request
+			// that must own the transition, otherwise two responses append the same
+			// notes to the paginator.
+			skipRecommendedParameterReload = true;
+			previousRecommendedSnapshotId.value = recommendedSnapshotId.value;
+			previousRecommendedIncludeFollowing.value = prefer.r.includeFollowingInRecommendedTimeline.value;
+			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+			recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
+			window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
+			recommendedRefreshAvailable.value = false;
+		}
 
-		paginator.reload().then(() => {
-			res();
-		});
+		await paginator.reload();
+	})().finally(() => {
+		timelineReloadPromise = null;
 	});
+	return timelineReloadPromise;
 }
 
 defineExpose({
@@ -593,3 +675,4 @@ defineExpose({
 	background: var(--MI_THEME-panel);
 }
 </style>
+

@@ -185,6 +185,9 @@ export const PREF_DEF = definePreferences({
 	collapseRenotes: {
 		default: true,
 	},
+	enableRenoteVisibilitySelection: {
+		default: true,
+	},
 	menu: {
 		default: [
 			'notifications',
@@ -226,6 +229,9 @@ export const PREF_DEF = definePreferences({
 		default: false,
 	},
 	showMutualAccountBadge: {
+		default: false,
+	},
+	includeFollowingInRecommendedTimeline: {
 		default: false,
 	},
 	enableQuickAddMfmFunction: {

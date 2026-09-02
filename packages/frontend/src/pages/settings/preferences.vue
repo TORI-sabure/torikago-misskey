@@ -175,6 +175,22 @@ SPDX-License-Identifier: AGPL-3.0-only
 								</MkPreferenceContainer>
 							</SearchMarker>
 
+							<SearchMarker :keywords="['recommended', 'timeline', 'following', 'おすすめ', 'タイムライン', 'フォロー']">
+								<MkPreferenceContainer k="includeFollowingInRecommendedTimeline">
+									<MkSwitch v-model="includeFollowingInRecommendedTimeline">
+										<template #label><SearchLabel>{{ recommendedFollowingLabel }}</SearchLabel></template>
+									</MkSwitch>
+								</MkPreferenceContainer>
+							</SearchMarker>
+
+							<SearchMarker :keywords="['renote', 'visibility', 'public', 'home', 'followers', 'リノート', '公開範囲']">
+								<MkPreferenceContainer k="enableRenoteVisibilitySelection">
+									<MkSwitch v-model="enableRenoteVisibilitySelection">
+										<template #label><SearchLabel>{{ renoteVisibilitySelectionLabel }}</SearchLabel></template>
+									</MkSwitch>
+								</MkPreferenceContainer>
+							</SearchMarker>
+
 							<SearchMarker :keywords="['pinned', 'list']">
 								<MkFolder>
 									<template #label><SearchLabel>{{ i18n.ts.pinnedList }}</SearchLabel></template>
@@ -914,6 +930,19 @@ const mutualAccountBadgeLabels: Record<string, string> = {
 	'pt-PT': 'Mostrar uma marca nas notas de contas mútuas',
 };
 const mutualAccountBadgeLabel = mutualAccountBadgeLabels[currentLang] ?? mutualAccountBadgeLabels['en-US']!;
+const renoteVisibilitySelectionLabels: Record<string, string> = {
+	'en-US': 'Allow choosing visibility when Renoting',
+	'ja-JP': 'リノートする際に公開範囲を選択できるようにする',
+	'ja-KS': 'リノートするとき公開範囲を選べるようにするで',
+	'ko-KR': '리노트할 때 공개 범위를 선택할 수 있도록 하기',
+	'zh-CN': '转发时允许选择可见范围',
+	'zh-TW': '轉發時允許選擇可見範圍',
+	'de-DE': 'Sichtbarkeit beim Renote auswählen',
+	'fr-FR': 'Permettre de choisir la visibilité lors d’un Renote',
+	'es-ES': 'Permitir elegir la visibilidad al renotar',
+	'pt-PT': 'Permitir escolher a visibilidade ao renotar',
+};
+const renoteVisibilitySelectionLabel = renoteVisibilitySelectionLabels[currentLang] ?? renoteVisibilitySelectionLabels['en-US']!;
 
 const $i = ensureSignin();
 
@@ -930,9 +959,48 @@ const hemisphere = prefer.model('hemisphere');
 const showNoteActionsOnlyHover = prefer.model('showNoteActionsOnlyHover');
 const showClipButtonInNoteFooter = prefer.model('showClipButtonInNoteFooter');
 const collapseRenotes = prefer.model('collapseRenotes');
+const enableRenoteVisibilitySelection = prefer.model('enableRenoteVisibilitySelection');
 const advancedMfm = prefer.model('advancedMfm');
 const showReactionsCount = prefer.model('showReactionsCount');
 const showMutualAccountBadge = prefer.model('showMutualAccountBadge');
+const includeFollowingInRecommendedTimeline = prefer.model('includeFollowingInRecommendedTimeline');
+
+const recommendedFollowingTexts: Record<string, { label: string; caption: string }> = {
+	'en-US': {
+		label: 'Prioritize posts from accounts you follow in the recommended timeline',
+		caption: 'When enabled, posts from accounts you follow are prioritized in the recommended timeline.',
+	},
+	'ja-JP': {
+		label: 'おすすめタイムラインにフォロー中のアカウントを優先表示する',
+		caption: 'オンにすると、フォロー中のアカウントの投稿をおすすめタイムラインで優先表示します。',
+	},
+	'ja-KS': {
+		label: 'おすすめタイムラインにフォローしとるアカウントを優先表示する',
+		caption: 'オンにしたら、フォローしとるアカウントの投稿をおすすめタイムラインで優先して出すで。',
+	},
+	'ko-KR': {
+		label: '추천 타임라인에서 팔로우 중인 계정의 게시물을 우선 표시',
+		caption: '활성화하면 팔로우 중인 계정의 게시물이 추천 타임라인에서 우선 표시됩니다.',
+	},
+	'zh-CN': {
+		label: '在推荐时间线中优先显示已关注账号的帖子',
+		caption: '启用后，已关注账号的帖子将在推荐时间线中优先显示。',
+	},
+	'zh-TW': {
+		label: '在推薦時間軸中優先顯示已追蹤帳號的貼文',
+		caption: '啟用後，已追蹤帳號的貼文將在推薦時間軸中優先顯示。',
+	},
+};
+const recommendedFollowingText = recommendedFollowingTexts[currentLang] ?? recommendedFollowingTexts['en-US']!;
+const recommendedHomeMixLabels: Record<string, string> = {
+	'en-US': 'Mix Home timeline posts into the recommended timeline',
+	'ja-JP': 'おすすめタイムラインにホームタイムラインの内容を混ぜる',
+	'ja-KS': 'おすすめタイムラインにホームタイムラインの中身を混ぜる',
+	'ko-KR': '추천 타임라인에 홈 타임라인 게시물 섞기',
+	'zh-CN': '在推荐时间线中混入主页时间线帖子',
+	'zh-TW': '在推薦時間軸中混入首頁時間軸貼文',
+};
+const recommendedFollowingLabel = recommendedHomeMixLabels[currentLang] ?? recommendedHomeMixLabels['en-US'] ?? recommendedFollowingText.label;
 const enableQuickAddMfmFunction = prefer.model('enableQuickAddMfmFunction');
 const forceShowAds = prefer.model('forceShowAds');
 const loadRawImages = prefer.model('loadRawImages');
@@ -1162,3 +1230,4 @@ definePage(() => ({
 	icon: 'ti ti-adjustments',
 }));
 </script>
+

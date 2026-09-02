@@ -158,6 +158,11 @@ export const paramDef = {
 		manifestJsonOverride: { type: 'string' },
 		enableFanoutTimeline: { type: 'boolean' },
 		enableFanoutTimelineDbFallback: { type: 'boolean' },
+		enableRecommendedTimeline: { type: 'boolean' },
+		collectRecommendedTimelineNotes: { type: 'boolean' },
+		recommendedTimelineAllowedUserIds: { type: 'array', maxItems: 100, items: { type: 'string', format: 'misskey:id' } },
+		recommendedTimelineForcedWords: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 64 } },
+		recommendedTimelineSettings: { type: 'object' },
 		perLocalUserUserTimelineCacheMax: { type: 'integer' },
 		perRemoteUserUserTimelineCacheMax: { type: 'integer' },
 		perUserHomeTimelineCacheMax: { type: 'integer' },
@@ -680,6 +685,26 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 			if (ps.enableFanoutTimelineDbFallback !== undefined) {
 				set.enableFanoutTimelineDbFallback = ps.enableFanoutTimelineDbFallback;
+			}
+
+			if (ps.enableRecommendedTimeline !== undefined) {
+				set.enableRecommendedTimeline = ps.enableRecommendedTimeline;
+			}
+
+			if (ps.collectRecommendedTimelineNotes !== undefined) {
+				set.collectRecommendedTimelineNotes = ps.collectRecommendedTimelineNotes;
+			}
+
+			if (ps.recommendedTimelineAllowedUserIds !== undefined) {
+				set.recommendedTimelineAllowedUserIds = [...new Set(ps.recommendedTimelineAllowedUserIds)];
+			}
+
+			if (ps.recommendedTimelineForcedWords !== undefined) {
+				set.recommendedTimelineForcedWords = [...new Set(ps.recommendedTimelineForcedWords.map(word => word.trim()).filter(Boolean))];
+			}
+
+			if (ps.recommendedTimelineSettings !== undefined) {
+				set.recommendedTimelineSettings = ps.recommendedTimelineSettings;
 			}
 
 			if (ps.perLocalUserUserTimelineCacheMax !== undefined) {

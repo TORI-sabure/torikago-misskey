@@ -399,6 +399,28 @@ export const meta = {
 				type: 'boolean',
 				optional: false, nullable: false,
 			},
+			enableRecommendedTimeline: {
+				type: 'boolean',
+				optional: false, nullable: false,
+			},
+			collectRecommendedTimelineNotes: {
+				type: 'boolean',
+				optional: false, nullable: false,
+			},
+			recommendedTimelineAllowedUserIds: {
+				type: 'array',
+				optional: false, nullable: false,
+				items: { type: 'string' },
+			},
+			recommendedTimelineForcedWords: {
+				type: 'array',
+				optional: false, nullable: false,
+				items: { type: 'string' },
+			},
+			recommendedTimelineSettings: {
+				type: 'object',
+				optional: false, nullable: false,
+			},
 			perLocalUserUserTimelineCacheMax: {
 				type: 'number',
 				optional: false, nullable: false,
@@ -754,6 +776,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				manifestJsonOverride: instance.manifestJsonOverride,
 				enableFanoutTimeline: instance.enableFanoutTimeline,
 				enableFanoutTimelineDbFallback: instance.enableFanoutTimelineDbFallback,
+				enableRecommendedTimeline: instance.enableRecommendedTimeline,
+				collectRecommendedTimelineNotes: instance.collectRecommendedTimelineNotes,
+				recommendedTimelineAllowedUserIds: instance.recommendedTimelineAllowedUserIds,
+				recommendedTimelineForcedWords: instance.recommendedTimelineForcedWords,
+				recommendedTimelineSettings: instance.recommendedTimelineSettings,
 				perLocalUserUserTimelineCacheMax: instance.perLocalUserUserTimelineCacheMax,
 				perRemoteUserUserTimelineCacheMax: instance.perRemoteUserUserTimelineCacheMax,
 				perUserHomeTimelineCacheMax: instance.perUserHomeTimelineCacheMax,

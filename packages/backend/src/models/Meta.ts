@@ -604,6 +604,35 @@ export class MiMeta {
 	})
 	public enableFanoutTimelineDbFallback: boolean;
 
+	@Column('boolean', {
+		default: false,
+	})
+	public enableRecommendedTimeline: boolean;
+
+	@Column('boolean', {
+		default: false,
+	})
+	public collectRecommendedTimelineNotes: boolean;
+
+	@Column('varchar', {
+		length: 32,
+		array: true,
+		default: '{}',
+	})
+	public recommendedTimelineAllowedUserIds: string[];
+
+	@Column('varchar', {
+		length: 64,
+		array: true,
+		default: '{}',
+	})
+	public recommendedTimelineForcedWords: string[];
+
+	@Column('jsonb', {
+		default: () => "'{}'",
+	})
+	public recommendedTimelineSettings: Record<string, any>;
+
 	@Column('integer', {
 		default: 300,
 	})

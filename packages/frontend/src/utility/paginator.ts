@@ -105,6 +105,7 @@ export class Paginator<
 	public searchQuery = ref<null | string>('');
 	private searchParamName: keyof E['req'] | 'search';
 	private canFetchDetection: 'safe' | 'limit' | null = null;
+	private getOlderIdOverride: (() => string | null | undefined) | null;
 	private aheadQueue: T[] = [];
 	private useShallowRef: SRef;
 
@@ -135,6 +136,11 @@ export class Paginator<
 
 		// 一部のAPIはさらに遡れる場合でもパフォーマンス上の理由でlimit以下の結果を返す場合があり、その場合はsafe、それ以外はlimitにすることを推奨
 		canFetchDetection?: 'safe' | 'limit';
+		/**
+		 * Use when an endpoint's fixed result order is not chronological, so the
+		 * oldest ID is not a valid pagination cursor.
+		 */
+		getOlderId?: () => string | null | undefined;
 
 		useShallowRef?: SRef;
 
@@ -157,6 +163,7 @@ export class Paginator<
 		this.initialDate = props.initialDate ?? null;
 		this.initialDirection = props.initialDirection ?? 'older';
 		this.canFetchDetection = props.canFetchDetection ?? null;
+		this.getOlderIdOverride = props.getOlderId ?? null;
 		this.noPaging = props.noPaging ?? false;
 		this.offsetMode = props.offsetMode ?? false;
 		this.canSearch = props.canSearch ?? false;
@@ -269,7 +276,7 @@ export class Paginator<
 			...(this.offsetMode ? {
 				offset: this.items.value.length,
 			} : {
-				untilId: this.getOldestId(),
+				untilId: this.getOlderIdOverride?.() ?? this.getOldestId(),
 			}),
 		};
 
@@ -425,3 +432,4 @@ export class Paginator<
 		}
 	}
 }
+
