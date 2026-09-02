@@ -58,7 +58,8 @@ jobs:
       uses: pnpm/action-setup@v6.0.9
     - name: Install FFmpeg
       run: |
-        sudo apt install -y ffmpeg
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
     - name: Use Node.js
       uses: actions/setup-node@v7.0.0
       with:
@@ -171,3 +172,4 @@ jobs:
         run: MISSKEY_CONFIG_YML=test.yml pnpm --filter backend migrate
       - name: Check no migrations are remaining
         run: MISSKEY_CONFIG_YML=test.yml pnpm --filter backend check-migrations
+
