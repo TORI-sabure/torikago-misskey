@@ -179,7 +179,6 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<MkPreferenceContainer k="includeFollowingInRecommendedTimeline">
 									<MkSwitch v-model="includeFollowingInRecommendedTimeline">
 										<template #label><SearchLabel>{{ recommendedFollowingLabel }}</SearchLabel></template>
-										<template #caption><SearchText>{{ recommendedFollowingCaption }}</SearchText></template>
 									</MkSwitch>
 								</MkPreferenceContainer>
 							</SearchMarker>
@@ -993,8 +992,15 @@ const recommendedFollowingTexts: Record<string, { label: string; caption: string
 	},
 };
 const recommendedFollowingText = recommendedFollowingTexts[currentLang] ?? recommendedFollowingTexts['en-US']!;
-const recommendedFollowingLabel = recommendedFollowingText.label;
-const recommendedFollowingCaption = recommendedFollowingText.caption;
+const recommendedHomeMixLabels: Record<string, string> = {
+	'en-US': 'Mix Home timeline posts into the recommended timeline',
+	'ja-JP': 'おすすめタイムラインにホームタイムラインの内容を混ぜる',
+	'ja-KS': 'おすすめタイムラインにホームタイムラインの中身を混ぜる',
+	'ko-KR': '추천 타임라인에 홈 타임라인 게시물 섞기',
+	'zh-CN': '在推荐时间线中混入主页时间线帖子',
+	'zh-TW': '在推薦時間軸中混入首頁時間軸貼文',
+};
+const recommendedFollowingLabel = recommendedHomeMixLabels[currentLang] ?? recommendedHomeMixLabels['en-US'] ?? recommendedFollowingText.label;
 const enableQuickAddMfmFunction = prefer.model('enableQuickAddMfmFunction');
 const forceShowAds = prefer.model('forceShowAds');
 const loadRawImages = prefer.model('loadRawImages');
@@ -1224,3 +1230,4 @@ definePage(() => ({
 	icon: 'ti ti-adjustments',
 }));
 </script>
+
