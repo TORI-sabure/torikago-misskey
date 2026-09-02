@@ -65,7 +65,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v3';
+const recommendationCacheVersion = 'v4';
 
 export const meta = {
 	tags: ['notes'],
@@ -245,9 +245,21 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// Keep Home and discovery retrieval independent. A busy global candidate pool
 		// must not crowd out followed accounts before scoring. Followed posts remain a
 		// normal recommendation source even when the explicit Home mix is off.
+		const directQuery = createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) });
+		// When the Home mix is off, followed accounts are still scored according to
+		// the configured source share. Only notes eligible for the shared candidate
+		// pool may enter through that path; private/followers-only and ordinary Home
+		// posts are Home timeline material, not recommendations.
+		if (!includeFollowing) {
+			directQuery.andWhere(`(
+				note.visibility = 'public'
+				OR (note.visibility = 'home' AND cardinality(note.tags) > 0)
+				OR (note.visibility = 'home' AND note.renoteId IS NOT NULL AND renote.visibility = 'public' AND (note.text IS NULL OR note.text = ''))
+			)`);
+		}
 		const noteLists = await Promise.all([
 			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
-			directIds.length > 0 ? createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) }).getMany() : [],
+			directIds.length > 0 ? directQuery.getMany() : [],
 		]);
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
 		const fileIds = [...new Set(notes.flatMap(note => note.fileIds))];
