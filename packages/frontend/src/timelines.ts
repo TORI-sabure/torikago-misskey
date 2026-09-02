@@ -34,6 +34,7 @@ export function basicTimelineLabel(timeline: BasicTimelineType): string {
 // Test-user access is account-specific, so it must not be exposed in public
 // instance metadata. Start hidden and ask the authenticated API once per page.
 const recommendedTimelineAvailable = ref(false);
+export const recommendedTimelineAccessChecked = ref(false);
 
 async function refreshRecommendedTimelineAvailability(): Promise<void> {
 	if ($i == null || (instance.features as typeof instance.features & { recommendedTimeline?: boolean } | undefined)?.recommendedTimeline !== true) return;
@@ -42,12 +43,17 @@ async function refreshRecommendedTimelineAvailability(): Promise<void> {
 		recommendedTimelineAvailable.value = result.available;
 	} catch {
 		recommendedTimelineAvailable.value = false;
+	} finally {
+		recommendedTimelineAccessChecked.value = true;
 	}
 }
 
 watch(() => (instance.features as typeof instance.features & { recommendedTimeline?: boolean } | undefined)?.recommendedTimeline, (enabled) => {
 	if (enabled === true) void refreshRecommendedTimelineAvailability();
-	else recommendedTimelineAvailable.value = false;
+	else {
+		recommendedTimelineAvailable.value = false;
+		recommendedTimelineAccessChecked.value = true;
+	}
 }, { immediate: true });
 
 export function isBasicTimeline(timeline: string): timeline is BasicTimelineType {
