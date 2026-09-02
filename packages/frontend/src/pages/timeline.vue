@@ -43,7 +43,7 @@ import { antennasCache, userListsCache, favoritedChannelsCache } from '@/cache.j
 import { deviceKind } from '@/utility/device-kind.js';
 import { deepMerge } from '@/utility/merge.js';
 import { miLocalStorage } from '@/local-storage.js';
-import { availableBasicTimelines, hasWithReplies, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
+import { availableBasicTimelines, hasWithReplies, isAvailableBasicTimeline, isBasicTimeline, basicTimelineIconClass, recommendedTimelineAccessChecked } from '@/timelines.js';
 import { prefer } from '@/preferences.js';
 import { lang } from '@@/js/config.js';
 
@@ -271,6 +271,10 @@ function saveTlFilter(key: keyof typeof store.s.tl.filter, newValue: boolean) {
 }
 
 function switchTlIfNeeded() {
+	// Recommended access is checked asynchronously for test-user restrictions.
+	// Do not overwrite the saved tab with the first available tab while that
+	// check is still in flight.
+	if (src.value === 'recommended' && !recommendedTimelineAccessChecked.value) return;
 	if (isBasicTimeline(src.value) && !isAvailableBasicTimeline(src.value)) {
 		src.value = availableBasicTimelines()[0];
 	}
@@ -280,6 +284,9 @@ onMounted(() => {
 	switchTlIfNeeded();
 });
 onActivated(() => {
+	switchTlIfNeeded();
+});
+watch(recommendedTimelineAccessChecked, () => {
 	switchTlIfNeeded();
 });
 
