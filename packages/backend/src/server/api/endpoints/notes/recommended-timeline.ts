@@ -30,12 +30,14 @@ type Settings = {
 	freshPercent: number;
 	maxNotesPerAuthor: number;
 	publicBonus: number;
+	boostBonus: number;
 	sensitivePenalty: number;
 	twoHopRenoteBonus: number;
 	negativePenalty: number;
 	forcedLimit: number;
 	forcedAccounts: string[];
 	negativeWords: string[];
+	boostWords: string[];
 	negativeAccounts: string[];
 };
 
@@ -54,18 +56,20 @@ const defaults: Settings = {
 	freshPercent: 20,
 	maxNotesPerAuthor: 2,
 	publicBonus: 2,
+	boostBonus: 4,
 	sensitivePenalty: 6,
 	twoHopRenoteBonus: 6,
 	negativePenalty: 8,
 	forcedLimit: 3,
 	forcedAccounts: [],
 	negativeWords: [],
+	boostWords: [],
 	negativeAccounts: [],
 };
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v5';
+const recommendationCacheVersion = 'v6';
 
 export const meta = {
 	tags: ['notes'],
@@ -203,9 +207,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			snapshotHours: integer('snapshotHours', 1, 168), seenDays: integer('seenDays', 1, 30), seenLimit: integer('seenLimit', 100, 5000),
 			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
-			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100),
+			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100),
 			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), forcedLimit: integer('forcedLimit', 0, 20),
-			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), negativeAccounts: strings('negativeAccounts'),
+			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
 	}
 
@@ -271,6 +275,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const forcedAccounts = normalizedAccounts(settings.forcedAccounts);
 		const negativeAccounts = normalizedAccounts(settings.negativeAccounts);
 		const negativeWords = settings.negativeWords.map(word => word.toLocaleLowerCase());
+		const boostWords = settings.boostWords.map(word => word.toLocaleLowerCase());
 		const accountName = (note: typeof notes[number]) => `${note.user?.username ?? ''}${note.user?.host ? `@${note.user.host}` : ''}`.toLocaleLowerCase();
 		const scored = notes.filter(note => !seen.has(this.targetId(note))).map(note => {
 			const source = directSet.has(note.userId) ? 'following' : twoHopProof.has(note.userId) ? 'twoHop' : 'unknown';
@@ -280,12 +285,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const text = `${note.cw ?? ''}\n${note.text ?? ''}`.toLocaleLowerCase();
 			const isForced = forcedWords.some(word => text.includes(word)) || forcedAccounts.has(accountName(note));
 			const negative = negativeWords.some(word => text.includes(word)) || negativeAccounts.has(accountName(note));
+			const boosted = boostWords.some(word => text.includes(word));
 			const plainPublicRenote = note.renote != null && note.renote.visibility === 'public' && (note.text == null || note.text === '');
 			const pureTwoHopRenote = source === 'twoHop' && plainPublicRenote;
-			// A Home renote is only a recommendation signal. Show its public original
-			// directly so the reader does not see a redundant renote wrapper.
-			const displayId = note.visibility === 'home' && plainPublicRenote ? note.renoteId! : note.id;
-			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + Math.log1p(reactions) + 1.5 * Math.log1p(note.renoteCount) + (note.visibility === 'public' ? settings.publicBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) - (note.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (negative ? settings.negativePenalty : 0);
+			// Followed and two-hop renotes are recommendation signals. Show their public
+			// originals directly so the reader does not see a redundant renote wrapper.
+			const displayId = source !== 'unknown' && plainPublicRenote ? note.renoteId! : note.id;
+			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + Math.log1p(reactions) + 1.5 * Math.log1p(note.renoteCount) + (note.visibility === 'public' ? settings.publicBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) + (boosted ? settings.boostBonus : 0) - (note.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (negative ? settings.negativePenalty : 0);
 			return { id: note.id, displayId, targetId: this.targetId(note), authorId: note.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 };
 		});
 		// A plain renote and its original note represent one thing to the reader.
