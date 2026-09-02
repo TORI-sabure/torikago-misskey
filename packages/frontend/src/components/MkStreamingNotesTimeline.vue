@@ -176,6 +176,9 @@ if (props.src === 'antenna') {
 			withFiles: props.onlyFiles ? true : undefined,
 			withSensitive: props.withSensitive,
 		})),
+		// The recommendation snapshot is score-ordered, not ID-ordered. Its next
+		// page must start after the last displayed snapshot entry.
+		getOlderId: () => paginator.items.value.at(-1)?.id,
 		useShallowRef: true,
 	}));
 } else if (props.src === 'local') {
@@ -672,3 +675,4 @@ defineExpose({
 	background: var(--MI_THEME-panel);
 }
 </style>
+
