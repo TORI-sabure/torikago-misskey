@@ -142,7 +142,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	}
 
 	private async getFromDb(ps: { untilId: string | null; sinceId: string | null; limit: number; includeMyRenotes: boolean; includeRenotedMyNotes: boolean; includeLocalRenotes: boolean; withFiles: boolean; withRenotes: boolean; mutualOnly: boolean; mutualUserIds?: string[]; }, me: MiLocalUser) {
-		// 逶ｸ莠探L縺ｯ蜈医↓蟇ｾ雎｡繝ｦ繝ｼ繧ｶ繝ｼ繧堤ｵ槭ｋ縲ゅヮ繝ｼ繝郁｡ｨ繧貞ｺ・￥襍ｰ譟ｻ縺励※繝輔か繝ｭ繝ｼ髢｢菫ゅｒ邨仙粋縺吶ｋ繧医ｊ縲・		// 繝帙・繝TL縺ｨ蜷梧ｧ倥↓謚慕ｨｿ閠・D縺ｧ邨槭ｋ縺ｻ縺・′縲∝ｯｾ雎｡謚慕ｨｿ縺悟商縺・・蟄伜惠縺励↑縺・ｴ蜷医〒繧るｫ倬溘↓縺ｪ繧九・		const mutualUserIds = ps.mutualOnly
+		// Mutual timelines are filtered in the database to avoid maintaining a separate fanout cache.
+		const mutualUserIds = ps.mutualOnly
 			? (ps.mutualUserIds ?? [me.id, ...await this.userFollowingService.getMutualFolloweeIds(me.id)])
 			: [];
 		const followees = ps.mutualOnly ? [] : await this.userFollowingService.getFollowees(me.id);
