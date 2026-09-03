@@ -3968,8 +3968,8 @@ declare module '../api.js' {
     ): Promise<SwitchCaseResponseType<E, P>>;
 
     /**
-     * Returns a personalized, bounded recommendation timeline.
-     *
+     * No description provided.
+     * 
      * **Credential required**: *Yes* / **Permission**: *read:account*
      */
     request<E extends 'notes/recommended-timeline', P extends Endpoints[E]['req']>(
@@ -3981,22 +3981,6 @@ declare module '../api.js' {
     /**
      * No description provided.
      * 
-     * **Credential required**: *No*
-     */
-    /**
-     * Returns a personalized, bounded recommendation timeline.
-     *
-     * **Credential required**: *Yes* / **Permission**: *read:account*
-     */
-    request<E extends 'notes/recommended-timeline', P extends Endpoints[E]['req']>(
-      endpoint: E,
-      params: P,
-      credential?: string | null,
-    ): Promise<SwitchCaseResponseType<E, P>>;
-
-    /**
-     * Returns whether the signed-in account may open the recommended timeline.
-     *
      * **Credential required**: *Yes* / **Permission**: *read:account*
      */
     request<E extends 'notes/recommended-timeline-available', P extends Endpoints[E]['req']>(
@@ -4006,8 +3990,8 @@ declare module '../api.js' {
     ): Promise<SwitchCaseResponseType<E, P>>;
 
     /**
-     * Indicates whether newer eligible recommended-timeline content is available.
-     *
+     * No description provided.
+     * 
      * **Credential required**: *Yes* / **Permission**: *read:account*
      */
     request<E extends 'notes/recommended-timeline-has-new', P extends Endpoints[E]['req']>(
@@ -4016,6 +4000,11 @@ declare module '../api.js' {
       credential?: string | null,
     ): Promise<SwitchCaseResponseType<E, P>>;
 
+    /**
+     * No description provided.
+     * 
+     * **Credential required**: *No*
+     */
     request<E extends 'notes/renotes', P extends Endpoints[E]['req']>(
       endpoint: E,
       params: P,
@@ -4637,6 +4626,39 @@ declare module '../api.js' {
      * **Credential required**: *No*
      */
     request<E extends 'users/clips', P extends Endpoints[E]['req']>(
+      endpoint: E,
+      params: P,
+      credential?: string | null,
+    ): Promise<SwitchCaseResponseType<E, P>>;
+
+    /**
+     * No description provided.
+     * 
+     * **Credential required**: *Yes* / **Permission**: *write:account*
+     */
+    request<E extends 'users/disliked-emoji-memo', P extends Endpoints[E]['req']>(
+      endpoint: E,
+      params: P,
+      credential?: string | null,
+    ): Promise<SwitchCaseResponseType<E, P>>;
+
+    /**
+     * No description provided.
+     * 
+     * **Credential required**: *Yes* / **Permission**: *write:account*
+     */
+    request<E extends 'users/disliked-emoji-memo-add', P extends Endpoints[E]['req']>(
+      endpoint: E,
+      params: P,
+      credential?: string | null,
+    ): Promise<SwitchCaseResponseType<E, P>>;
+
+    /**
+     * No description provided.
+     * 
+     * **Credential required**: *Yes* / **Permission**: *write:account*
+     */
+    request<E extends 'users/disliked-emoji-memo-delete', P extends Endpoints[E]['req']>(
       endpoint: E,
       params: P,
       credential?: string | null,

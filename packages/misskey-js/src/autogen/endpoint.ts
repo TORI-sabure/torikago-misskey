@@ -624,6 +624,10 @@ import type {
 	UsersAchievementsResponse,
 	UsersClipsRequest,
 	UsersClipsResponse,
+	UsersDislikedEmojiMemoRequest,
+	UsersDislikedEmojiMemoResponse,
+	UsersDislikedEmojiMemoAddRequest,
+	UsersDislikedEmojiMemoDeleteRequest,
 	UsersFeaturedNotesRequest,
 	UsersFeaturedNotesResponse,
 	UsersFlashsRequest,
@@ -1096,6 +1100,9 @@ export type Endpoints = {
 	'users': { req: UsersRequest; res: UsersResponse };
 	'users/achievements': { req: UsersAchievementsRequest; res: UsersAchievementsResponse };
 	'users/clips': { req: UsersClipsRequest; res: UsersClipsResponse };
+	'users/disliked-emoji-memo': { req: UsersDislikedEmojiMemoRequest; res: UsersDislikedEmojiMemoResponse };
+	'users/disliked-emoji-memo-add': { req: UsersDislikedEmojiMemoAddRequest; res: EmptyResponse };
+	'users/disliked-emoji-memo-delete': { req: UsersDislikedEmojiMemoDeleteRequest; res: EmptyResponse };
 	'users/featured-notes': { req: UsersFeaturedNotesRequest; res: UsersFeaturedNotesResponse };
 	'users/flashs': { req: UsersFlashsRequest; res: UsersFlashsResponse };
 	'users/followers': { req: UsersFollowersRequest; res: UsersFollowersResponse };
