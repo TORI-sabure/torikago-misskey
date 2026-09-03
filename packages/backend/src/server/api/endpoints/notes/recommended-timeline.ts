@@ -371,6 +371,5 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const count = await this.redisClient.zcard(key);
 		if (count > settings.seenLimit) await this.redisClient.zremrangebyrank(key, 0, count - settings.seenLimit - 1);
 	}
-
 }
 
