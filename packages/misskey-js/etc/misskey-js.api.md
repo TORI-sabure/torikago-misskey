@@ -3090,35 +3090,19 @@ type NotesReactionsRequest = operations['notes___reactions']['requestBody']['con
 type NotesReactionsResponse = operations['notes___reactions']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
-type NotesRecommendedTimelineAvailableResponse = {
-    available: boolean;
-};
+type NotesRecommendedTimelineAvailableResponse = operations['notes___recommended-timeline-available']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
-type NotesRecommendedTimelineHasNewRequest = {
-    snapshotId: string;
-    includeFollowing?: boolean;
-};
+type NotesRecommendedTimelineHasNewRequest = operations['notes___recommended-timeline-has-new']['requestBody']['content']['application/json'];
 
 // @public (undocumented)
-type NotesRecommendedTimelineHasNewResponse = {
-    hasNew: boolean;
-};
+type NotesRecommendedTimelineHasNewResponse = operations['notes___recommended-timeline-has-new']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
-type NotesRecommendedTimelineRequest = {
-    limit?: number;
-    untilId?: string;
-    snapshotId: string;
-    previousSnapshotId?: string;
-    previousIncludeFollowing?: boolean;
-    includeFollowing?: boolean;
-    withFiles?: boolean;
-    withSensitive?: boolean;
-};
+type NotesRecommendedTimelineRequest = operations['notes___recommended-timeline']['requestBody']['content']['application/json'];
 
 // @public (undocumented)
-type NotesRecommendedTimelineResponse = components['schemas']['Note'][];
+type NotesRecommendedTimelineResponse = operations['notes___recommended-timeline']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
 type NotesRenotesRequest = operations['notes___renotes']['requestBody']['content']['application/json'];
