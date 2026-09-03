@@ -23,12 +23,14 @@ export type BasicTimelineType = typeof basicTimelineTypes[number];
 
 const customTimelineLabels: Record<string, Partial<Record<BasicTimelineType, string>>> = {
 	'en-US': { mutual: 'Mutual', recommended: 'Recommended' },
-	'ja-JP': { mutual: '相互', recommended: 'おすすめ' },
-	'ja-KS': { mutual: '相互', recommended: 'おすすめ' },
+	'ja-JP': { mutual: '逶ｸ莠・, recommended: '縺翫☆縺吶ａ' },
+	'ja-KS': { mutual: '逶ｸ莠・, recommended: '縺翫☆縺吶ａ' },
 };
 
 export function basicTimelineLabel(timeline: BasicTimelineType): string {
-	return customTimelineLabels[lang]?.[timeline] ?? customTimelineLabels['en-US']?.[timeline] ?? i18n.ts._timelines[timeline];
+	const customLabel = customTimelineLabels[lang]?.[timeline] ?? customTimelineLabels['en-US']?.[timeline];
+	if (customLabel != null) return customLabel;
+	return i18n.ts._timelines[timeline as Exclude<BasicTimelineType, 'mutual' | 'recommended'>];
 }
 
 // Test-user access is account-specific, so it must not be exposed in public
@@ -103,3 +105,4 @@ export function availableBasicTimelines(): BasicTimelineType[] {
 export function hasWithReplies(timeline: BasicTimelineType | undefined | null): boolean {
 	return timeline === 'local' || timeline === 'social';
 }
+
