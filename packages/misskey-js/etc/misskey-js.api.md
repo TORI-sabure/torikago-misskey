@@ -2170,6 +2170,10 @@ declare namespace entities {
         UsersAchievementsResponse,
         UsersClipsRequest,
         UsersClipsResponse,
+        UsersDislikedEmojiMemoRequest,
+        UsersDislikedEmojiMemoResponse,
+        UsersDislikedEmojiMemoAddRequest,
+        UsersDislikedEmojiMemoDeleteRequest,
         UsersFeaturedNotesRequest,
         UsersFeaturedNotesResponse,
         UsersFlashsRequest,
@@ -3647,6 +3651,18 @@ type UsersClipsRequest = operations['users___clips']['requestBody']['content']['
 
 // @public (undocumented)
 type UsersClipsResponse = operations['users___clips']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoAddRequest = operations['users___disliked-emoji-memo-add']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoDeleteRequest = operations['users___disliked-emoji-memo-delete']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoRequest = operations['users___disliked-emoji-memo']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoResponse = operations['users___disliked-emoji-memo']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
 type UsersFeaturedNotesRequest = operations['users___featured-notes']['requestBody']['content']['application/json'];
