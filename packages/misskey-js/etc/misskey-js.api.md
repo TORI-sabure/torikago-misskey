@@ -2084,6 +2084,11 @@ declare namespace entities {
         NotesReactionsResponse,
         NotesReactionsCreateRequest,
         NotesReactionsDeleteRequest,
+        NotesRecommendedTimelineRequest,
+        NotesRecommendedTimelineResponse,
+        NotesRecommendedTimelineAvailableResponse,
+        NotesRecommendedTimelineHasNewRequest,
+        NotesRecommendedTimelineHasNewResponse,
         NotesRenotesRequest,
         NotesRenotesResponse,
         NotesRepliesRequest,
@@ -3083,6 +3088,37 @@ type NotesReactionsRequest = operations['notes___reactions']['requestBody']['con
 
 // @public (undocumented)
 type NotesReactionsResponse = operations['notes___reactions']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
+type NotesRecommendedTimelineAvailableResponse = {
+    available: boolean;
+};
+
+// @public (undocumented)
+type NotesRecommendedTimelineHasNewRequest = {
+    snapshotId: string;
+    includeFollowing?: boolean;
+};
+
+// @public (undocumented)
+type NotesRecommendedTimelineHasNewResponse = {
+    hasNew: boolean;
+};
+
+// @public (undocumented)
+type NotesRecommendedTimelineRequest = {
+    limit?: number;
+    untilId?: string;
+    snapshotId: string;
+    previousSnapshotId?: string;
+    previousIncludeFollowing?: boolean;
+    includeFollowing?: boolean;
+    withFiles?: boolean;
+    withSensitive?: boolean;
+};
+
+// @public (undocumented)
+type NotesRecommendedTimelineResponse = components['schemas']['Note'][];
 
 // @public (undocumented)
 type NotesRenotesRequest = operations['notes___renotes']['requestBody']['content']['application/json'];
