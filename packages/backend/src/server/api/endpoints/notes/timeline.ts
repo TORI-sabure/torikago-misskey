@@ -79,9 +79,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const sinceId = ps.sinceId ?? (ps.sinceDate ? this.idService.gen(ps.sinceDate!) : null);
 
 			if (ps.mutualOnly) {
-				// HTLと同じフォローキャッシュで「自分 → 投稿者」を先に絞り、
-				// 候補に対する「投稿者 → 自分」だけをDBで一括確認する。
-				const followings = await this.cacheService.userFollowingsCache.fetch(me.id);
+				// HTL縺ｨ蜷後§繝輔か繝ｭ繝ｼ繧ｭ繝｣繝・す繝･縺ｧ縲瑚・蛻・竊・謚慕ｨｿ閠・阪ｒ蜈医↓邨槭ｊ縲・				// 蛟呵｣懊↓蟇ｾ縺吶ｋ縲梧兜遞ｿ閠・竊・閾ｪ蛻・阪□縺代ｒDB縺ｧ荳諡ｬ遒ｺ隱阪☆繧九・				const followings = await this.cacheService.userFollowingsCache.fetch(me.id);
 				const mutualFolloweeIds = await this.userFollowingService.getMutualFolloweeIds(me.id, Object.keys(followings));
 				const mutualUserIds = [me.id, ...mutualFolloweeIds];
 				const mutualUserIdSet = new Set(mutualUserIds);
@@ -99,8 +97,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					mutualUserIds,
 				}, me);
 
-				// 相互ユーザーがいない場合は、HTL全体を走査せず自分のノートだけをDBから取得する。
-				if (!this.serverSettings.enableFanoutTimeline || mutualFolloweeIds.length === 0) {
+				// 逶ｸ莠偵Θ繝ｼ繧ｶ繝ｼ縺後＞縺ｪ縺・ｴ蜷医・縲？TL蜈ｨ菴薙ｒ襍ｰ譟ｻ縺帙★閾ｪ蛻・・繝弱・繝医□縺代ｒDB縺九ｉ蜿門ｾ励☆繧九・				if (!this.serverSettings.enableFanoutTimeline || mutualFolloweeIds.length === 0) {
 					const timeline = await getMutualFromDb(untilId, sinceId, ps.limit);
 
 					process.nextTick(() => {
@@ -202,9 +199,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	}
 
 	private async getFromDb(ps: { untilId: string | null; sinceId: string | null; limit: number; includeMyRenotes: boolean; includeRenotedMyNotes: boolean; includeLocalRenotes: boolean; withFiles: boolean; withRenotes: boolean; mutualOnly: boolean; mutualUserIds?: string[]; }, me: MiLocalUser) {
-		// 相互TLは先に対象ユーザーを絞る。ノート表を広く走査してフォロー関係を結合するより、
-		// ホームTLと同様に投稿者IDで絞るほうが、対象投稿が古い・存在しない場合でも高速になる。
-		const mutualUserIds = ps.mutualOnly
+		// 逶ｸ莠探L縺ｯ蜈医↓蟇ｾ雎｡繝ｦ繝ｼ繧ｶ繝ｼ繧堤ｵ槭ｋ縲ゅヮ繝ｼ繝郁｡ｨ繧貞ｺ・￥襍ｰ譟ｻ縺励※繝輔か繝ｭ繝ｼ髢｢菫ゅｒ邨仙粋縺吶ｋ繧医ｊ縲・		// 繝帙・繝TL縺ｨ蜷梧ｧ倥↓謚慕ｨｿ閠・D縺ｧ邨槭ｋ縺ｻ縺・′縲∝ｯｾ雎｡謚慕ｨｿ縺悟商縺・・蟄伜惠縺励↑縺・ｴ蜷医〒繧るｫ倬溘↓縺ｪ繧九・		const mutualUserIds = ps.mutualOnly
 			? (ps.mutualUserIds ?? [me.id, ...await this.userFollowingService.getMutualFolloweeIds(me.id)])
 			: [];
 		const followees = ps.mutualOnly ? [] : await this.userFollowingService.getFollowees(me.id);
@@ -229,9 +224,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				.andWhere('note.channelId IS NULL')
 				.andWhere('note.userId IN (:...mutualUserIds)', { mutualUserIds });
 		} else {
-
 		if (followees.length > 0 && followingChannelIds.length > 0) {
-			// ユーザー・チャンネルともにフォローあり
+			// 繝ｦ繝ｼ繧ｶ繝ｼ繝ｻ繝√Ε繝ｳ繝阪Ν縺ｨ繧ゅ↓繝輔か繝ｭ繝ｼ縺ゅｊ
 			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {
 				qb
@@ -243,8 +237,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					.orWhere('note.channelId IN (:...followingChannelIds)', { followingChannelIds });
 			}));
 		} else if (followees.length > 0) {
-			// ユーザーフォローのみ（チャンネルフォローなし）
-			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
+			// 繝ｦ繝ｼ繧ｶ繝ｼ繝輔か繝ｭ繝ｼ縺ｮ縺ｿ・医メ繝｣繝ｳ繝阪Ν繝輔か繝ｭ繝ｼ縺ｪ縺暦ｼ・			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {
 				qb
 					.andWhere('note.channelId IS NULL')
@@ -257,19 +250,15 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				}
 			}));
 		} else if (followingChannelIds.length > 0) {
-			// チャンネルフォローのみ（ユーザーフォローなし）
-			query.andWhere(new Brackets(qb => {
+			// 繝√Ε繝ｳ繝阪Ν繝輔か繝ｭ繝ｼ縺ｮ縺ｿ・医Θ繝ｼ繧ｶ繝ｼ繝輔か繝ｭ繝ｼ縺ｪ縺暦ｼ・			query.andWhere(new Brackets(qb => {
 				qb
-					// renoteChannelIdは見る必要が無い
-					// ・HTLに流れてくるチャンネル＝フォローしているチャンネル
-					// ・HTLにフォロー外のチャンネルが流れるのは、フォローしているユーザがそのチャンネル投稿をリノートした場合のみ
-					// つまり、ユーザフォローしてない前提のこのブロックでは見る必要が無い
-					.where('note.channelId IN (:...followingChannelIds)', { followingChannelIds })
+					// renoteChannelId縺ｯ隕九ｋ蠢・ｦ√′辟｡縺・					// 繝ｻHTL縺ｫ豬√ｌ縺ｦ縺上ｋ繝√Ε繝ｳ繝阪Ν・昴ヵ繧ｩ繝ｭ繝ｼ縺励※縺・ｋ繝√Ε繝ｳ繝阪Ν
+					// 繝ｻHTL縺ｫ繝輔か繝ｭ繝ｼ螟悶・繝√Ε繝ｳ繝阪Ν縺梧ｵ√ｌ繧九・縺ｯ縲√ヵ繧ｩ繝ｭ繝ｼ縺励※縺・ｋ繝ｦ繝ｼ繧ｶ縺後◎縺ｮ繝√Ε繝ｳ繝阪Ν謚慕ｨｿ繧偵Μ繝弱・繝医＠縺溷ｴ蜷医・縺ｿ
+					// 縺､縺ｾ繧翫√Θ繝ｼ繧ｶ繝輔か繝ｭ繝ｼ縺励※縺ｪ縺・燕謠舌・縺薙・繝悶Ο繝・け縺ｧ縺ｯ隕九ｋ蠢・ｦ√′辟｡縺・					.where('note.channelId IN (:...followingChannelIds)', { followingChannelIds })
 					.orWhere('note.userId = :meId', { meId: me.id });
 			}));
 		} else {
-			// フォローなし
-			query.andWhere(new Brackets(qb => {
+			// 繝輔か繝ｭ繝ｼ縺ｪ縺・			query.andWhere(new Brackets(qb => {
 				qb
 					.andWhere('note.channelId IS NULL')
 					.andWhere('note.userId = :meId', { meId: me.id });
@@ -279,9 +268,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 		query.andWhere(new Brackets(qb => {
 			qb
-				.where('note.replyId IS NULL') // 返信ではない
-				.orWhere(new Brackets(qb => {
-					qb // 返信だけど投稿者自身への返信
+				.where('note.replyId IS NULL') // 霑比ｿ｡縺ｧ縺ｯ縺ｪ縺・				.orWhere(new Brackets(qb => {
+					qb // 霑比ｿ｡縺縺代←謚慕ｨｿ閠・・霄ｫ縺ｸ縺ｮ霑比ｿ｡
 						.where('note.replyId IS NOT NULL')
 						.andWhere('note.replyUserId = note.userId');
 				}));
@@ -340,4 +328,5 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return await query.limit(ps.limit).getMany();
 	}
 }
+
 
