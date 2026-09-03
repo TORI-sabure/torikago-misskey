@@ -78,67 +78,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const untilId = ps.untilId ?? (ps.untilDate ? this.idService.gen(ps.untilDate!) : null);
 			const sinceId = ps.sinceId ?? (ps.sinceDate ? this.idService.gen(ps.sinceDate!) : null);
 
-			if (ps.mutualOnly) {
-				// HTLと同じフォローキャッシュで「自分 → 投稿者」を先に絞り、
-				// 候補に対する「投稿者 → 自分」だけをDBで一括確認する。
-				const followings = await this.cacheService.userFollowingsCache.fetch(me.id);
-				const mutualFolloweeIds = await this.userFollowingService.getMutualFolloweeIds(me.id, Object.keys(followings));
-				const mutualUserIds = [me.id, ...mutualFolloweeIds];
-				const mutualUserIdSet = new Set(mutualUserIds);
-
-				const getMutualFromDb = async (untilId: string | null, sinceId: string | null, limit: number) => await this.getFromDb({
-					untilId,
-					sinceId,
-					limit,
-					includeMyRenotes: ps.includeMyRenotes,
-					includeRenotedMyNotes: ps.includeRenotedMyNotes,
-					includeLocalRenotes: ps.includeLocalRenotes,
-					withFiles: ps.withFiles,
-					withRenotes: ps.withRenotes,
-					mutualOnly: true,
-					mutualUserIds,
-				}, me);
-
-				// 相互ユーザーがいない場合は、HTL全体を走査せず自分のノートだけをDBから取得する。
-				if (!this.serverSettings.enableFanoutTimeline || mutualFolloweeIds.length === 0) {
-					const timeline = await getMutualFromDb(untilId, sinceId, ps.limit);
-
-					process.nextTick(() => {
-						this.activeUsersChart.read(me);
-					});
-
-					return await this.noteEntityService.packMany(timeline, me);
-				}
-
-				const timeline = await this.fanoutTimelineEndpointService.timeline({
-					untilId,
-					sinceId,
-					limit: ps.limit,
-					allowPartial: ps.allowPartial,
-					me,
-					useDbFallback: this.serverSettings.enableFanoutTimelineDbFallback,
-					redisTimelines: ps.withFiles ? [`homeTimelineWithFiles:${me.id}`] : [`homeTimeline:${me.id}`],
-					alwaysIncludeMyNotes: true,
-					excludePureRenotes: !ps.withRenotes,
-					noteFilter: note => {
-						if (!mutualUserIdSet.has(note.userId)) return false;
-						if (note.reply && note.reply.visibility === 'followers') {
-							if (!Object.hasOwn(followings, note.reply.userId) && note.reply.userId !== me.id) return false;
-						}
-
-						return true;
-					},
-					dbFallback: getMutualFromDb,
-				});
-
-				process.nextTick(() => {
-					this.activeUsersChart.read(me);
-				});
-
-				return timeline;
-			}
-
-			if (!this.serverSettings.enableFanoutTimeline) {
+			if (!this.serverSettings.enableFanoutTimeline || ps.mutualOnly) {
 				const timeline = await this.getFromDb({
 					untilId,
 					sinceId,
@@ -148,7 +88,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					includeLocalRenotes: ps.includeLocalRenotes,
 					withFiles: ps.withFiles,
 					withRenotes: ps.withRenotes,
-					mutualOnly: false,
+					mutualOnly: ps.mutualOnly,
 				}, me);
 
 				process.nextTick(() => {
@@ -157,6 +97,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 				return await this.noteEntityService.packMany(timeline, me);
 			}
+
 			const [
 				followings,
 			] = await Promise.all([
@@ -202,10 +143,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	}
 
 	private async getFromDb(ps: { untilId: string | null; sinceId: string | null; limit: number; includeMyRenotes: boolean; includeRenotedMyNotes: boolean; includeLocalRenotes: boolean; withFiles: boolean; withRenotes: boolean; mutualOnly: boolean; mutualUserIds?: string[]; }, me: MiLocalUser) {
-		// 相互TLは先に対象ユーザーを絞る。ノート表を広く走査してフォロー関係を結合するより、
-		// ホームTLと同様に投稿者IDで絞るほうが、対象投稿が古い・存在しない場合でも高速になる。
 		const mutualUserIds = ps.mutualOnly
-			? (ps.mutualUserIds ?? [me.id, ...await this.userFollowingService.getMutualFolloweeIds(me.id)])
+			? (ps.mutualUserIds ?? [me.id, ...(await this.userFollowingService.getMutualFolloweeIds(me.id))])
 			: [];
 		const followees = ps.mutualOnly ? [] : await this.userFollowingService.getFollowees(me.id);
 
@@ -228,9 +167,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			query
 				.andWhere('note.channelId IS NULL')
 				.andWhere('note.userId IN (:...mutualUserIds)', { mutualUserIds });
-		} else {
-
-		if (followees.length > 0 && followingChannelIds.length > 0) {
+		} else if (followees.length > 0 && followingChannelIds.length > 0) {
 			// ユーザー・チャンネルともにフォローあり
 			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {
@@ -274,7 +211,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					.andWhere('note.channelId IS NULL')
 					.andWhere('note.userId = :meId', { meId: me.id });
 			}));
-		}
 		}
 
 		query.andWhere(new Brackets(qb => {
@@ -340,4 +276,3 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return await query.limit(ps.limit).getMany();
 	}
 }
-

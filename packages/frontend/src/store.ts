@@ -13,7 +13,7 @@ import { Pizzax } from '@/lib/pizzax.js';
 import { DEFAULT_DEVICE_KIND } from '@/utility/device-kind.js';
 
 /**
- * 「状態」を管理するストア(not「設定」)
+ * 縲檎憾諷九阪ｒ邂｡逅・☆繧九せ繝医い(not縲瑚ｨｭ螳壹・
  */
 export const store = markRaw(new Pizzax('base', {
 	accountSetupWizard: {
@@ -22,7 +22,7 @@ export const store = markRaw(new Pizzax('base', {
 	},
 	tips: {
 		where: 'device',
-		default: {} as Partial<Record<typeof TIPS[number], boolean>>, // true = 既読
+		default: {} as Partial<Record<typeof TIPS[number], boolean>>, // true = 譌｢隱ｭ
 	},
 	memo: {
 		where: 'account',
@@ -51,7 +51,7 @@ export const store = markRaw(new Pizzax('base', {
 	tl: {
 		where: 'deviceAccount',
 		default: {
-			src: 'home' as 'home' | 'mutual' | 'local' | 'social' | 'global' | `list:${string}`,
+			src: 'home' as 'home' | 'mutual' | 'recommended' | 'local' | 'social' | 'global' | `list:${string}`,
 			userList: null as Misskey.entities.UserList | null,
 			filter: {
 				withReplies: true,
@@ -120,11 +120,11 @@ export const store = markRaw(new Pizzax('base', {
 	},
 }));
 
-// TODO: 他のタブと永続化されたstateを同期
-
+// TODO: 莉悶・繧ｿ繝悶→豌ｸ邯壼喧縺輔ｌ縺殱tate繧貞酔譛・
 const PREFIX = 'miux:' as const;
 
 interface Watcher {
 	key: string;
 	callback: (value: unknown) => void;
 }
+

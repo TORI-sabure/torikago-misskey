@@ -44,7 +44,6 @@ import * as os from '@/os.js';
 import { i18n } from '@/i18n.js';
 import { basicTimelineLabel, hasWithReplies, isAvailableBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
 import { soundSettingsButton } from '@/ui/deck/tl-note-notification.js';
-import { lang } from '@@/js/config.js';
 
 const props = defineProps<{
 	column: Column;
@@ -59,24 +58,8 @@ const withReplies = ref(props.column.withReplies ?? false);
 const withSensitive = ref(props.column.withSensitive ?? true);
 const onlyFiles = ref(props.column.onlyFiles ?? false);
 
-const mutualTimelineLabels: Record<string, string> = {
-	'en-US': 'Mutual',
-	'ja-JP': '相互',
-	'ja-KS': '相互',
-	'ko-KR': '맞팔',
-	'ko-GS': '맞팔',
-	'zh-CN': '互关',
-	'zh-TW': '互相追蹤',
-	'de-DE': 'Gegenseitig',
-	'fr-FR': 'Mutuel',
-	'es-ES': 'Mutuo',
-	'pt-PT': 'Mútuo',
-};
-
 function timelineLabel(timeline: NonNullable<Column['tl']>): string {
-	return timeline === 'mutual'
-		? (mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!)
-		: i18n.ts._timelines[timeline];
+	return basicTimelineLabel(timeline);
 }
 
 watch(withRenotes, v => {
@@ -117,7 +100,7 @@ async function setType() {
 	const { canceled, result: src } = await os.select({
 		title: i18n.ts.timeline,
 		items: [{
-			value: 'mutual', label: mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!,
+			value: 'mutual', label: basicTimelineLabel('mutual'),
 		}, ...(isAvailableBasicTimeline('recommended') ? [{
 			value: 'recommended' as const, label: basicTimelineLabel('recommended'),
 		}] : []), {
@@ -197,3 +180,4 @@ const menu = computed<MenuItem[]>(() => {
 	font-size: 90%;
 }
 </style>
+
