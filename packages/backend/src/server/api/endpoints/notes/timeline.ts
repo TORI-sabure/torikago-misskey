@@ -170,45 +170,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		} else if (followees.length > 0 && followingChannelIds.length > 0) {
 			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {
-				qb
-					.where(new Brackets(qb2 => {
-						qb2
-							.andWhere('note.userId IN (:...meOrFolloweeIds)', { meOrFolloweeIds })
-							.andWhere('note.channelId IS NULL');
-					}))
-					.orWhere('note.channelId IN (:...followingChannelIds)', { followingChannelIds });
-			}));
-		} else if (followees.length > 0) {
-			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
-			query.andWhere(new Brackets(qb => {
-				qb
-					.andWhere('note.channelId IS NULL')
-					.andWhere('note.userId IN (:...meOrFolloweeIds)', { meOrFolloweeIds });
-				if (mutingChannelIds.length > 0) {
-					qb.andWhere(new Brackets(qb2 => {
-						qb2.orWhere('note.renoteChannelId IS NULL');
-						qb2.orWhere('note.renoteChannelId NOT IN (:...mutingChannelIds)', { mutingChannelIds });
-					}));
-				}
-			}));
-		} else if (followingChannelIds.length > 0) {
-			query.andWhere(new Brackets(qb => {
-				qb
-					.where('note.channelId IN (:...followingChannelIds)', { followingChannelIds })
-					.orWhere('note.userId = :meId', { meId: me.id });
-			}));
-		} else {
-			query.andWhere(new Brackets(qb => {
-				qb
-					.andWhere('note.channelId IS NULL')
-					.andWhere('note.userId = :meId', { meId: me.id });
-			}));
-		}
-
-		query.andWhere(new Brackets(qb => {
 			qb
-				.where('note.replyId IS NULL') // 霑比ｿ｡縺ｧ縺ｯ縺ｪ縺・				.orWhere(new Brackets(qb => {
-					qb // 霑比ｿ｡縺縺代←謚慕ｨｿ閠・・霄ｫ縺ｸ縺ｮ霑比ｿ｡
+				.where('note.replyId IS NULL')
+				.orWhere(new Brackets(qb2 => {
+					qb2
 						.where('note.replyId IS NOT NULL')
 						.andWhere('note.replyUserId = note.userId');
 				}));
