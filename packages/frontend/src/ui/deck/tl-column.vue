@@ -44,7 +44,6 @@ import * as os from '@/os.js';
 import { i18n } from '@/i18n.js';
 import { basicTimelineLabel, hasWithReplies, isAvailableBasicTimeline, basicTimelineIconClass } from '@/timelines.js';
 import { soundSettingsButton } from '@/ui/deck/tl-note-notification.js';
-import { lang } from '@@/js/config.js';
 
 const props = defineProps<{
 	column: Column;
@@ -59,24 +58,8 @@ const withReplies = ref(props.column.withReplies ?? false);
 const withSensitive = ref(props.column.withSensitive ?? true);
 const onlyFiles = ref(props.column.onlyFiles ?? false);
 
-const mutualTimelineLabels: Record<string, string> = {
-	'en-US': 'Mutual',
-	'ja-JP': '逶ｸ莠・,
-	'ja-KS': '逶ｸ莠・,
-	'ko-KR': '・橲券',
-	'ko-GS': '・橲券',
-	'zh-CN': '莠貞・',
-	'zh-TW': '莠堤嶌霑ｽ雹､',
-	'de-DE': 'Gegenseitig',
-	'fr-FR': 'Mutuel',
-	'es-ES': 'Mutuo',
-	'pt-PT': 'Mﾃｺtuo',
-};
-
 function timelineLabel(timeline: NonNullable<Column['tl']>): string {
-	return timeline === 'mutual'
-		? (mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!)
-		: basicTimelineLabel(timeline);
+	return basicTimelineLabel(timeline);
 }
 
 watch(withRenotes, v => {
