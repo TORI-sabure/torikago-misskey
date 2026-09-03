@@ -78,64 +78,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const untilId = ps.untilId ?? (ps.untilDate ? this.idService.gen(ps.untilDate!) : null);
 			const sinceId = ps.sinceId ?? (ps.sinceDate ? this.idService.gen(ps.sinceDate!) : null);
 
-			if (ps.mutualOnly) {
-				// HTL縺ｨ蜷後§繝輔か繝ｭ繝ｼ繧ｭ繝｣繝・す繝･縺ｧ縲瑚・蛻・竊・謚慕ｨｿ閠・阪ｒ蜈医↓邨槭ｊ縲・				// 蛟呵｣懊↓蟇ｾ縺吶ｋ縲梧兜遞ｿ閠・竊・閾ｪ蛻・阪□縺代ｒDB縺ｧ荳諡ｬ遒ｺ隱阪☆繧九・				const followings = await this.cacheService.userFollowingsCache.fetch(me.id);
-				const mutualFolloweeIds = await this.userFollowingService.getMutualFolloweeIds(me.id, Object.keys(followings));
-				const mutualUserIds = [me.id, ...mutualFolloweeIds];
-				const mutualUserIdSet = new Set(mutualUserIds);
-
-				const getMutualFromDb = async (untilId: string | null, sinceId: string | null, limit: number) => await this.getFromDb({
-					untilId,
-					sinceId,
-					limit,
-					includeMyRenotes: ps.includeMyRenotes,
-					includeRenotedMyNotes: ps.includeRenotedMyNotes,
-					includeLocalRenotes: ps.includeLocalRenotes,
-					withFiles: ps.withFiles,
-					withRenotes: ps.withRenotes,
-					mutualOnly: true,
-					mutualUserIds,
-				}, me);
-
-				// 逶ｸ莠偵Θ繝ｼ繧ｶ繝ｼ縺後＞縺ｪ縺・ｴ蜷医・縲？TL蜈ｨ菴薙ｒ襍ｰ譟ｻ縺帙★閾ｪ蛻・・繝弱・繝医□縺代ｒDB縺九ｉ蜿門ｾ励☆繧九・				if (!this.serverSettings.enableFanoutTimeline || mutualFolloweeIds.length === 0) {
-					const timeline = await getMutualFromDb(untilId, sinceId, ps.limit);
-
-					process.nextTick(() => {
-						this.activeUsersChart.read(me);
-					});
-
-					return await this.noteEntityService.packMany(timeline, me);
-				}
-
-				const timeline = await this.fanoutTimelineEndpointService.timeline({
-					untilId,
-					sinceId,
-					limit: ps.limit,
-					allowPartial: ps.allowPartial,
-					me,
-					useDbFallback: this.serverSettings.enableFanoutTimelineDbFallback,
-					redisTimelines: ps.withFiles ? [`homeTimelineWithFiles:${me.id}`] : [`homeTimeline:${me.id}`],
-					alwaysIncludeMyNotes: true,
-					excludePureRenotes: !ps.withRenotes,
-					noteFilter: note => {
-						if (!mutualUserIdSet.has(note.userId)) return false;
-						if (note.reply && note.reply.visibility === 'followers') {
-							if (!Object.hasOwn(followings, note.reply.userId) && note.reply.userId !== me.id) return false;
-						}
-
-						return true;
-					},
-					dbFallback: getMutualFromDb,
-				});
-
-				process.nextTick(() => {
-					this.activeUsersChart.read(me);
-				});
-
-				return timeline;
-			}
-
-			if (!this.serverSettings.enableFanoutTimeline) {
+			if (!this.serverSettings.enableFanoutTimeline || ps.mutualOnly) {
 				const timeline = await this.getFromDb({
 					untilId,
 					sinceId,
@@ -145,7 +88,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					includeLocalRenotes: ps.includeLocalRenotes,
 					withFiles: ps.withFiles,
 					withRenotes: ps.withRenotes,
-					mutualOnly: false,
+					mutualOnly: ps.mutualOnly,
 				}, me);
 
 				process.nextTick(() => {
