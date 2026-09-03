@@ -23,8 +23,8 @@ export type BasicTimelineType = typeof basicTimelineTypes[number];
 
 const customTimelineLabels: Record<string, Partial<Record<BasicTimelineType, string>>> = {
 	'en-US': { mutual: 'Mutual', recommended: 'Recommended' },
-	'ja-JP': { mutual: '逶ｸ莠・, recommended: '縺翫☆縺吶ａ' },
-	'ja-KS': { mutual: '逶ｸ莠・, recommended: '縺翫☆縺吶ａ' },
+	'ja-JP': { mutual: '\u76f8\u4e92', recommended: '\u304a\u3059\u3059\u3081' },
+	'ja-KS': { mutual: '\u76f8\u4e92', recommended: '\u304a\u3059\u3059\u3081' },
 };
 
 export function basicTimelineLabel(timeline: BasicTimelineType): string {
