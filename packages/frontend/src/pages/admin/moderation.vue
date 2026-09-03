@@ -283,10 +283,10 @@ const recommendedSettings = ref({
 	sensitivePenalty: typeof recommendedRawSettings.sensitivePenalty === 'number' ? recommendedRawSettings.sensitivePenalty : 6,
 	negativePenalty: typeof recommendedRawSettings.negativePenalty === 'number' ? recommendedRawSettings.negativePenalty : 8,
 });
-const recommendedForcedAccounts = ref(Array.isArray(recommendedRawSettings.forcedAccounts) ? recommendedRawSettings.forcedAccounts.join('\n') : '');
-const recommendedBoostWords = ref(Array.isArray(recommendedRawSettings.boostWords) ? recommendedRawSettings.boostWords.join('\n') : '');
-const recommendedNegativeWords = ref(Array.isArray(recommendedRawSettings.negativeWords) ? recommendedRawSettings.negativeWords.join('\n') : '');
-const recommendedNegativeAccounts = ref(Array.isArray(recommendedRawSettings.negativeAccounts) ? recommendedRawSettings.negativeAccounts.join('\n') : '');
+const recommendedForcedAccounts = ref(Array.isArray((recommendedRawSettings as Record<string, unknown>)["forcedAccounts"]) ? ((recommendedRawSettings as Record<string, unknown>)["forcedAccounts"] as string[]).join('\n') : '');
+const recommendedBoostWords = ref(Array.isArray((recommendedRawSettings as Record<string, unknown>)["boostWords"]) ? ((recommendedRawSettings as Record<string, unknown>)["boostWords"] as string[]).join('\n') : '');
+const recommendedNegativeWords = ref(Array.isArray((recommendedRawSettings as Record<string, unknown>)["negativeWords"]) ? ((recommendedRawSettings as Record<string, unknown>)["negativeWords"] as string[]).join('\n') : '');
+const recommendedNegativeAccounts = ref(Array.isArray((recommendedRawSettings as Record<string, unknown>)["negativeAccounts"]) ? ((recommendedRawSettings as Record<string, unknown>)["negativeAccounts"] as string[]).join('\n') : '');
 type RecommendedAdminText = { label: string; caption: string; collectLabel: string; collectCaption: string; allowedUsers: string; allowedUsersCaption: string; forcedWords: string; forcedWordsCaption: string; advanced: string; candidatePoolLimit: string; candidateScanLimit: string; snapshotHours: string; maxNotesPerAuthor: string; twoHopPercent: string; followingPercent: string; unknownPercent: string; qualityPercent: string; balancedPercent: string; freshPercent: string; forcedLimit: string; publicBonus: string; boostBonus: string; twoHopRenoteBonus: string; sensitivePenalty: string; negativePenalty: string; forcedAccounts: string; boostWords: string; negativeWords: string; negativeAccounts: string; accountCaption: string };
 const recommendedAdminDefaultText: RecommendedAdminText = {
 	label: 'Enable recommended timeline', caption: 'Controls whether users can open the recommended timeline.', collectLabel: 'Collect notes for recommendations', collectCaption: 'Collects candidates while the timeline is hidden.', allowedUsers: 'Recommended timeline test users', allowedUsersCaption: 'When one or more users are listed, only they can open the recommended timeline. Leave the list empty to allow everyone.', forcedWords: 'Always-recommend words', forcedWordsCaption: 'One plain-text word per line. Visibility, mute, and block rules are never bypassed.', advanced: 'Recommendation settings', candidatePoolLimit: 'Candidate pool size', candidateScanLimit: 'Candidates checked per generation', snapshotHours: 'Snapshot retention (hours)', maxNotesPerAuthor: 'Maximum notes per author', twoHopPercent: 'Two-hop accounts (%)', followingPercent: 'Followed accounts (%)', unknownPercent: 'Unrelated accounts (%)', qualityPercent: 'High-quality slots (%)', balancedPercent: 'Balanced slots (%)', freshPercent: 'Fresh slots (%)', forcedLimit: 'Maximum forced slots', publicBonus: 'Public note bonus', boostBonus: 'Boost-word bonus', twoHopRenoteBonus: 'Two-hop public renote bonus', sensitivePenalty: 'Sensitive file penalty', negativePenalty: 'Negative rule penalty', forcedAccounts: 'Always-recommend accounts', boostWords: 'Boost words', negativeWords: 'Negative words', negativeAccounts: 'Negative accounts', accountCaption: 'One account per line: @username or @username@server.example.',
@@ -387,10 +387,10 @@ function save_recommendedSettings() {
 	os.apiWithDialog('admin/update-meta', {
 			recommendedTimelineSettings: {
 				...recommendedSettings.value,
-				forcedAccounts: recommendedForcedAccounts.value.split('\n').map(value => value.trim()).filter(Boolean),
-				boostWords: recommendedBoostWords.value.split('\n').map(value => value.trim()).filter(Boolean),
-				negativeWords: recommendedNegativeWords.value.split('\n').map(value => value.trim()).filter(Boolean),
-			negativeAccounts: recommendedNegativeAccounts.value.split('\n').map(value => value.trim()).filter(Boolean),
+				forcedAccounts: recommendedForcedAccounts.value.split('\n').map((value: string) => value.trim()).filter(Boolean),
+				boostWords: recommendedBoostWords.value.split('\n').map((value: string) => value.trim()).filter(Boolean),
+				negativeWords: recommendedNegativeWords.value.split('\n').map((value: string) => value.trim()).filter(Boolean),
+			negativeAccounts: recommendedNegativeAccounts.value.split('\n').map((value: string) => value.trim()).filter(Boolean),
 		},
 	} as never).then(() => fetchInstance(true));
 }
