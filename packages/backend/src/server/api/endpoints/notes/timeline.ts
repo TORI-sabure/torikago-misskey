@@ -166,8 +166,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			query
 				.andWhere('note.channelId IS NULL')
 				.andWhere('note.userId IN (:...mutualUserIds)', { mutualUserIds });
-		} else {
-		if (followees.length > 0 && followingChannelIds.length > 0) {
+		} else if (followees.length > 0 && followingChannelIds.length > 0) {
 			// 繝ｦ繝ｼ繧ｶ繝ｼ繝ｻ繝√Ε繝ｳ繝阪Ν縺ｨ繧ゅ↓繝輔か繝ｭ繝ｼ縺ゅｊ
 			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {
@@ -206,7 +205,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					.andWhere('note.channelId IS NULL')
 					.andWhere('note.userId = :meId', { meId: me.id });
 			}));
-		}
 		}
 
 		query.andWhere(new Brackets(qb => {
