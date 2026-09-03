@@ -168,23 +168,22 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				.andWhere('note.channelId IS NULL')
 				.andWhere('note.userId IN (:...mutualUserIds)', { mutualUserIds });
 		} else if (followees.length > 0 && followingChannelIds.length > 0) {
-			// 繝ｦ繝ｼ繧ｶ繝ｼ繝ｻ繝√Ε繝ｳ繝阪Ν縺ｨ繧ゅ↓繝輔か繝ｭ繝ｼ縺ゅｊ
 			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {
 				qb
 					.where(new Brackets(qb2 => {
 						qb2
-							.andWhere('note.userId IN (:...meOrFolloweeIds)', { meOrFolloweeIds: meOrFolloweeIds })
+							.andWhere('note.userId IN (:...meOrFolloweeIds)', { meOrFolloweeIds })
 							.andWhere('note.channelId IS NULL');
 					}))
 					.orWhere('note.channelId IN (:...followingChannelIds)', { followingChannelIds });
 			}));
 		} else if (followees.length > 0) {
-			// 繝ｦ繝ｼ繧ｶ繝ｼ繝輔か繝ｭ繝ｼ縺ｮ縺ｿ・医メ繝｣繝ｳ繝阪Ν繝輔か繝ｭ繝ｼ縺ｪ縺暦ｼ・			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
+			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {
 				qb
 					.andWhere('note.channelId IS NULL')
-					.andWhere('note.userId IN (:...meOrFolloweeIds)', { meOrFolloweeIds: meOrFolloweeIds });
+					.andWhere('note.userId IN (:...meOrFolloweeIds)', { meOrFolloweeIds });
 				if (mutingChannelIds.length > 0) {
 					qb.andWhere(new Brackets(qb2 => {
 						qb2.orWhere('note.renoteChannelId IS NULL');
@@ -193,15 +192,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				}
 			}));
 		} else if (followingChannelIds.length > 0) {
-			// 繝√Ε繝ｳ繝阪Ν繝輔か繝ｭ繝ｼ縺ｮ縺ｿ・医Θ繝ｼ繧ｶ繝ｼ繝輔か繝ｭ繝ｼ縺ｪ縺暦ｼ・			query.andWhere(new Brackets(qb => {
+			query.andWhere(new Brackets(qb => {
 				qb
-					// renoteChannelId縺ｯ隕九ｋ蠢・ｦ√′辟｡縺・					// 繝ｻHTL縺ｫ豬√ｌ縺ｦ縺上ｋ繝√Ε繝ｳ繝阪Ν・昴ヵ繧ｩ繝ｭ繝ｼ縺励※縺・ｋ繝√Ε繝ｳ繝阪Ν
-					// 繝ｻHTL縺ｫ繝輔か繝ｭ繝ｼ螟悶・繝√Ε繝ｳ繝阪Ν縺梧ｵ√ｌ繧九・縺ｯ縲√ヵ繧ｩ繝ｭ繝ｼ縺励※縺・ｋ繝ｦ繝ｼ繧ｶ縺後◎縺ｮ繝√Ε繝ｳ繝阪Ν謚慕ｨｿ繧偵Μ繝弱・繝医＠縺溷ｴ蜷医・縺ｿ
-					// 縺､縺ｾ繧翫√Θ繝ｼ繧ｶ繝輔か繝ｭ繝ｼ縺励※縺ｪ縺・燕謠舌・縺薙・繝悶Ο繝・け縺ｧ縺ｯ隕九ｋ蠢・ｦ√′辟｡縺・					.where('note.channelId IN (:...followingChannelIds)', { followingChannelIds })
+					.where('note.channelId IN (:...followingChannelIds)', { followingChannelIds })
 					.orWhere('note.userId = :meId', { meId: me.id });
 			}));
 		} else {
-			// 繝輔か繝ｭ繝ｼ縺ｪ縺・			query.andWhere(new Brackets(qb => {
+			query.andWhere(new Brackets(qb => {
 				qb
 					.andWhere('note.channelId IS NULL')
 					.andWhere('note.userId = :meId', { meId: me.id });
