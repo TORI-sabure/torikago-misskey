@@ -171,7 +171,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				await pipeline.exec();
 			}
 			const offset = ps.untilId == null ? 0 : Math.max(0, resultIds.indexOf(ps.untilId) + 1);
-			let pageIds = resultIds.slice(offset, offset + ps.limit * 4);
+			let pageIds = resultIds.slice(offset, offset + ps.limit * 8);
 			// Reaching the end of a snapshot is the only time scrolling performs more
 			// ranking. The existing IDs remain fixed, so the reader never sees items
 			// move or duplicate while loading older entries.
@@ -195,7 +195,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					`, 2, resultKey, cursorKey, String(resultIds.length), String(cursor + 1), String(settings.snapshotHours * 3600), ...extraIds);
 					if (appended === 1) resultIds.push(...extraIds);
 					else resultIds = await this.redisClient.lrange(resultKey, 0, -1);
-					pageIds = resultIds.slice(offset, offset + ps.limit * 4);
+					pageIds = resultIds.slice(offset, offset + ps.limit * 8);
 				}
 			}
 			if (pageIds.length === 0) return [];
@@ -209,11 +209,25 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			});
 			const sensitiveFileIds = new Set(files.filter(file => file.isSensitive).map(file => file.id));
 			const noteMap = new Map(notes.map(note => [note.id, note]));
+			const [snapshotSeenIds, globallySeenIds] = await Promise.all([
+				this.redisClient.smembers(`${resultKey}:seen`),
+				this.redisClient.zrangebyscore(`torikago:recommended:${recommendationCacheVersion}:seen:${me.id}`, Date.now() - settings.seenDays * 86400000, '+inf'),
+			]);
+			const snapshotSeen = new Set(snapshotSeenIds);
+			const globallySeen = new Set(globallySeenIds);
+			// The same fixed snapshot must remain readable while moving between views,
+			// but a later snapshot must never reintroduce a note already delivered by
+			// another snapshot. This second guard also closes the generation race where
+			// two refreshes rank candidates before either response has recorded them.
 			const ordered = pageIds.map(id => noteMap.get(id)).filter(note => note != null)
+				.filter(note => {
+					const targetId = this.targetId(note);
+					return snapshotSeen.has(targetId) || !globallySeen.has(targetId);
+				})
 				.filter(note => ps.withSensitive || !note.fileIds.some(id => sensitiveFileIds.has(id))).slice(0, ps.limit);
 			// A page returned to the client is the smallest reliable approximation of
 			// "seen". Never consume an entire snapshot merely because it was replaced.
-			await this.markSeen(me.id, ordered.map(note => this.targetId(note)), settings);
+			await this.markSeen(me.id, resultKey, ordered.map(note => this.targetId(note)), settings);
 			return await this.noteEntityService.packMany(ordered, me);
 		});
 	}
@@ -414,12 +428,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return note.renoteId != null && (note.text == null || note.text === '') && (note.cw == null || note.cw === '') ? note.renoteId : note.id;
 	}
 
-	private async markSeen(userId: string, noteIds: string[], settings: Settings): Promise<void> {
+	private async markSeen(userId: string, resultKey: string, noteIds: string[], settings: Settings): Promise<void> {
 		if (noteIds.length === 0) return;
 		const key = `torikago:recommended:${recommendationCacheVersion}:seen:${userId}`;
 		const now = Date.now();
 		const pipeline = this.redisClient.pipeline();
 		for (const id of noteIds) pipeline.zadd(key, now, id);
+		pipeline.sadd(`${resultKey}:seen`, ...noteIds);
+		pipeline.expire(`${resultKey}:seen`, settings.snapshotHours * 3600);
 		pipeline.zremrangebyscore(key, 0, now - settings.seenDays * 86400000);
 		pipeline.expire(key, settings.seenDays * 86400);
 		await pipeline.exec();
