@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 <div class="_gaps">
 	<div style="text-align: center; padding: 0 16px;">{{ i18n.ts._initialTutorial._timeline.description1 }}</div>
 	<div class="_gaps_s">
-		<div v-for="tl in basicTimelineTypes">
+		<div v-for="tl in tutorialTimelineTypes">
 			<i :class="basicTimelineIconClass(tl)"></i> <b>{{ i18n.ts._timelines[tl] }}</b> … {{ i18n.ts._initialTutorial._timeline[tl] }}
 		</div>
 	</div>
@@ -27,6 +27,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 <script setup lang="ts">
 import { i18n } from '@/i18n.js';
 import { basicTimelineIconClass, basicTimelineTypes } from '@/timelines.js';
+
+const tutorialTimelineTypes = basicTimelineTypes.filter((tl): tl is Exclude<typeof basicTimelineTypes[number], 'mutual' | 'recommended'> => tl !== 'mutual' && tl !== 'recommended');
 </script>
 
 <style lang="scss" module>

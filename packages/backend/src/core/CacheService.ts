@@ -26,6 +26,11 @@ export class CacheService implements OnApplicationShutdown {
 	public userBlockedCache: RedisKVCache<Set<string>>; // NOTE: 「被」Blockキャッシュ
 	public renoteMutingsCache: RedisKVCache<Set<string>>;
 	public userFollowingsCache: RedisKVCache<Record<string, Pick<MiFollowing, 'withReplies'> | undefined>>;
+	/**
+	 * Mutual followees are used by the paginated mutual timeline. Keeping this
+	 * compact set cached avoids a reverse-follow DB query for every "load more".
+	 */
+	public userMutualFollowingsCache: RedisKVCache<Set<string>>;
 
 	constructor(
 		@Inject(DI.redis)
@@ -130,6 +135,30 @@ export class CacheService implements OnApplicationShutdown {
 			fromRedisConverter: (value) => JSON.parse(value),
 		});
 
+		this.userMutualFollowingsCache = new RedisKVCache<Set<string>>(this.redisClient, 'userMutualFollowings', {
+			// A short shared cache removes the scroll-time query hot path without
+			// retaining large relationship lists on a small instance.
+			lifetime: 1000 * 60 * 5, // 5m
+			memoryCacheLifetime: 1000 * 15, // 15s
+			fetcher: async (key) => {
+				const followees = await this.followingsRepository.find({
+					where: { followerId: key },
+					select: { followeeId: true },
+				});
+				if (followees.length === 0) return new Set();
+
+				const reverseFollowings = await this.followingsRepository.createQueryBuilder('following')
+					.select('following.followerId', 'followerId')
+					.where('following.followeeId = :userId', { userId: key })
+					.andWhere('following.followerId IN (:...followeeIds)', { followeeIds: followees.map(following => following.followeeId) })
+					.getRawMany<{ followerId: string }>();
+
+				return new Set(reverseFollowings.map(following => following.followerId));
+			},
+			toRedisConverter: (value) => JSON.stringify(Array.from(value)),
+			fromRedisConverter: (value) => new Set(JSON.parse(value)),
+		});
+
 		// NOTE: チャンネルのフォロー状況キャッシュはChannelFollowingServiceで行っている
 
 		this.redisForSub.on('message', this.onMessage);
@@ -181,6 +210,14 @@ export class CacheService implements OnApplicationShutdown {
 					const followee = this.userByIdCache.get(body.followeeId);
 					if (followee) followee.followersCount++;
 					this.userFollowingsCache.delete(body.followerId);
+					this.userMutualFollowingsCache.delete(body.followerId);
+					this.userMutualFollowingsCache.delete(body.followeeId);
+					break;
+				}
+				case 'unfollow': {
+					this.userFollowingsCache.delete(body.followerId);
+					this.userMutualFollowingsCache.delete(body.followerId);
+					this.userMutualFollowingsCache.delete(body.followeeId);
 					break;
 				}
 				default:
@@ -207,6 +244,7 @@ export class CacheService implements OnApplicationShutdown {
 		this.userBlockedCache.dispose();
 		this.renoteMutingsCache.dispose();
 		this.userFollowingsCache.dispose();
+		this.userMutualFollowingsCache.dispose();
 	}
 
 	@bindThis

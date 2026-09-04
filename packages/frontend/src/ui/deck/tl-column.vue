@@ -76,7 +76,7 @@ const mutualTimelineLabels: Record<string, string> = {
 function timelineLabel(timeline: NonNullable<Column['tl']>): string {
 	return timeline === 'mutual'
 		? (mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!)
-		: i18n.ts._timelines[timeline];
+		: basicTimelineLabel(timeline);
 }
 
 watch(withRenotes, v => {
@@ -117,7 +117,7 @@ async function setType() {
 	const { canceled, result: src } = await os.select({
 		title: i18n.ts.timeline,
 		items: [{
-			value: 'mutual', label: mutualTimelineLabels[lang] ?? mutualTimelineLabels['en-US']!,
+			value: 'mutual', label: basicTimelineLabel('mutual'),
 		}, ...(isAvailableBasicTimeline('recommended') ? [{
 			value: 'recommended' as const, label: basicTimelineLabel('recommended'),
 		}] : []), {

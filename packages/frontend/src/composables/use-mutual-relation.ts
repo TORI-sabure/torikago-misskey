@@ -31,7 +31,8 @@ async function flush(): Promise<void> {
 
 	try {
 		const result = await misskeyApi('users/relation', { userId: userIds });
-		for (const relation of result) {
+		const relationResults = Array.isArray(result) ? result : [result];
+		for (const relation of relationResults) {
 			relations.delete(relation.id);
 			relations.set(relation.id, relation.isFollowing && relation.isFollowed);
 		}

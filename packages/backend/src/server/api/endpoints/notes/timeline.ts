@@ -81,8 +81,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			if (ps.mutualOnly) {
 				// HTLと同じフォローキャッシュで「自分 → 投稿者」を先に絞り、
 				// 候補に対する「投稿者 → 自分」だけをDBで一括確認する。
-				const followings = await this.cacheService.userFollowingsCache.fetch(me.id);
-				const mutualFolloweeIds = await this.userFollowingService.getMutualFolloweeIds(me.id, Object.keys(followings));
+				const [followings, mutualFolloweeIds] = await Promise.all([
+					this.cacheService.userFollowingsCache.fetch(me.id),
+					this.cacheService.userMutualFollowingsCache.fetch(me.id),
+				]);
 				const mutualUserIds = [me.id, ...mutualFolloweeIds];
 				const mutualUserIdSet = new Set(mutualUserIds);
 
@@ -100,7 +102,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				}, me);
 
 				// 相互ユーザーがいない場合は、HTL全体を走査せず自分のノートだけをDBから取得する。
-				if (!this.serverSettings.enableFanoutTimeline || mutualFolloweeIds.length === 0) {
+				if (!this.serverSettings.enableFanoutTimeline || mutualFolloweeIds.size === 0) {
 					const timeline = await getMutualFromDb(untilId, sinceId, ps.limit);
 
 					process.nextTick(() => {
@@ -205,7 +207,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// 相互TLは先に対象ユーザーを絞る。ノート表を広く走査してフォロー関係を結合するより、
 		// ホームTLと同様に投稿者IDで絞るほうが、対象投稿が古い・存在しない場合でも高速になる。
 		const mutualUserIds = ps.mutualOnly
-			? (ps.mutualUserIds ?? [me.id, ...await this.userFollowingService.getMutualFolloweeIds(me.id)])
+			? (ps.mutualUserIds ?? [me.id, ...await this.cacheService.userMutualFollowingsCache.fetch(me.id)])
 			: [];
 		const followees = ps.mutualOnly ? [] : await this.userFollowingService.getFollowees(me.id);
 
@@ -229,7 +231,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				.andWhere('note.channelId IS NULL')
 				.andWhere('note.userId IN (:...mutualUserIds)', { mutualUserIds });
 		} else {
-
 		if (followees.length > 0 && followingChannelIds.length > 0) {
 			// ユーザー・チャンネルともにフォローあり
 			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];

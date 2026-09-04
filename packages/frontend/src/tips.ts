@@ -14,6 +14,8 @@ export const TIPS = [
 	'postForm',
 	'deck',
 	'tl.home',
+	'tl.mutual',
+	'tl.recommended',
 	'tl.local',
 	'tl.social',
 	'tl.global',

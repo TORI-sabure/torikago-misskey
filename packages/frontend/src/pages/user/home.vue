@@ -66,7 +66,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<template #label>{{ i18n.ts.moderationNote }}</template>
 								<template #caption>{{ i18n.ts.moderationNoteDescription }}</template>
 							</MkTextarea>
-							<div v-else>
+							<div v-else class="moderationNoteAction">
 								<MkButton small @click="editModerationNote = true">{{ i18n.ts.addModerationNote }}</MkButton>
 							</div>
 						</div>
@@ -725,10 +725,17 @@ onDeactivated(disposeBannerParallaxResizeObserver);
 
 				> .moderationNote {
 					margin: 16px 16px 0 16px;
+
+					> .moderationNoteAction {
+						display: flex;
+						justify-content: center;
+					}
 				}
 
 				> .dislikedEmojiMemo {
 					margin: 16px 16px 0 16px;
+					display: flex;
+					justify-content: center;
 				}
 
 				> .memo {

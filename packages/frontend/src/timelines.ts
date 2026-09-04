@@ -28,7 +28,9 @@ const customTimelineLabels: Record<string, Partial<Record<BasicTimelineType, str
 };
 
 export function basicTimelineLabel(timeline: BasicTimelineType): string {
-	return customTimelineLabels[lang]?.[timeline] ?? customTimelineLabels['en-US']?.[timeline] ?? i18n.ts._timelines[timeline];
+	const customLabel = customTimelineLabels[lang]?.[timeline] ?? customTimelineLabels['en-US']?.[timeline];
+	if (customLabel != null) return customLabel;
+	return i18n.ts._timelines[timeline as Exclude<BasicTimelineType, 'mutual' | 'recommended'>];
 }
 
 // Test-user access is account-specific, so it must not be exposed in public

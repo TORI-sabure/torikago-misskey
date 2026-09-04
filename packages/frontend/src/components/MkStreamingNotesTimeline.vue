@@ -40,7 +40,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			tag="div"
 		>
 			<template v-for="(note, i) in paginator.items.value" :key="note.id">
-				<div v-if="i > 0 && isSeparatorNeeded(paginator.items.value[i -1].createdAt, note.createdAt)" :data-scroll-anchor="note.id">
+				<div v-if="props.src !== 'recommended' && i > 0 && isSeparatorNeeded(paginator.items.value[i -1].createdAt, note.createdAt)" :data-scroll-anchor="note.id">
 					<div :class="$style.date">
 						<span><i class="ti ti-chevron-up"></i> {{ getSeparatorInfo(paginator.items.value[i -1].createdAt, note.createdAt)?.prevText }}</span>
 						<span style="height: 1em; width: 1px; background: var(--MI_THEME-divider);"></span>
@@ -675,4 +675,3 @@ defineExpose({
 	background: var(--MI_THEME-panel);
 }
 </style>
-
