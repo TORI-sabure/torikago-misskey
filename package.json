@@ -1,6 +1,6 @@
 {
 	"name": "misskey",
-	"version": "2026.7.0-torikago.2",
+	"version": "2026.7.0-torikago.3.1",
 	"codename": "nasubi",
 	"repository": {
 		"type": "git",
@@ -76,4 +76,3 @@
 		"typescript": "npm:@typescript/typescript6@6.0.2"
 	}
 }
-
