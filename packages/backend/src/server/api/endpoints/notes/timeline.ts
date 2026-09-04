@@ -275,7 +275,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					.andWhere('note.userId = :meId', { meId: me.id });
 			}));
 		}
-		}
 
 		query.andWhere(new Brackets(qb => {
 			qb
