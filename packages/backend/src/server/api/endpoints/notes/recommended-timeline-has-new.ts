@@ -25,10 +25,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			if (!this.serverSettings.enableRecommendedTimeline) throw new ApiError(meta.errors.featureDisabled);
 			const allowedUserIds = this.serverSettings.recommendedTimelineAllowedUserIds ?? [];
 			if (allowedUserIds.length > 0 && !allowedUserIds.includes(me.id)) return { hasNew: false };
-			const key = `torikago:recommended:v6:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}:version`;
+			const key = `torikago:recommended:v7:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}:version`;
 			const [snapshotVersion, currentVersion] = await Promise.all([this.redisClient.get(key), this.redisForTimelines.get('torikago:recommended:version')]);
 			return { hasNew: snapshotVersion != null && snapshotVersion !== (currentVersion ?? '0') };
 		});
 	}
 }
-
