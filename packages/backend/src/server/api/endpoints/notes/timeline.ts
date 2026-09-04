@@ -230,8 +230,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			query
 				.andWhere('note.channelId IS NULL')
 				.andWhere('note.userId IN (:...mutualUserIds)', { mutualUserIds });
-		} else {
-		if (followees.length > 0 && followingChannelIds.length > 0) {
+		} else if (followees.length > 0 && followingChannelIds.length > 0) {
 			// ユーザー・チャンネルともにフォローあり
 			const meOrFolloweeIds = [me.id, ...followees.map(f => f.followeeId)];
 			query.andWhere(new Brackets(qb => {

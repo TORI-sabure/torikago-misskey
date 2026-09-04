@@ -267,7 +267,7 @@ const enableRecommendedTimeline = ref((meta as typeof meta & { enableRecommended
 const collectRecommendedTimelineNotes = ref((meta as typeof meta & { collectRecommendedTimelineNotes?: boolean }).collectRecommendedTimelineNotes ?? false);
 const recommendedTimelineAllowedUserIds = ref([...(meta as typeof meta & { recommendedTimelineAllowedUserIds?: string[] }).recommendedTimelineAllowedUserIds ?? []]);
 const recommendedTimelineForcedWords = ref(((meta as typeof meta & { recommendedTimelineForcedWords?: string[] }).recommendedTimelineForcedWords ?? []).join('\n'));
-const recommendedRawSettings = (meta as typeof meta & { recommendedTimelineSettings?: Record<string, unknown> }).recommendedTimelineSettings ?? {};
+const recommendedRawSettings: Record<string, unknown> = (meta as typeof meta & { recommendedTimelineSettings?: Record<string, unknown> }).recommendedTimelineSettings ?? {};
 const recommendedSettings = ref({
 	candidatePoolLimit: typeof recommendedRawSettings.candidatePoolLimit === 'number' ? recommendedRawSettings.candidatePoolLimit : 3000,
 	candidateScanLimit: typeof recommendedRawSettings.candidateScanLimit === 'number' ? recommendedRawSettings.candidateScanLimit : 300,

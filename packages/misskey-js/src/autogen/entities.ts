@@ -1,5 +1,5 @@
 /* eslint @typescript-eslint/naming-convention: 0 */
-import { components, operations } from './types.js';
+import { operations } from './types.js';
 
 export type EmptyRequest = Record<string, unknown> | undefined;
 export type EmptyResponse = Record<string, unknown> | undefined;
@@ -541,27 +541,11 @@ export type NotesReactionsRequest = operations['notes___reactions']['requestBody
 export type NotesReactionsResponse = operations['notes___reactions']['responses']['200']['content']['application/json'];
 export type NotesReactionsCreateRequest = operations['notes___reactions___create']['requestBody']['content']['application/json'];
 export type NotesReactionsDeleteRequest = operations['notes___reactions___delete']['requestBody']['content']['application/json'];
-export type NotesRecommendedTimelineRequest = {
-	limit?: number;
-	untilId?: string;
-	snapshotId: string;
-	previousSnapshotId?: string;
-	previousIncludeFollowing?: boolean;
-	includeFollowing?: boolean;
-	withFiles?: boolean;
-	withSensitive?: boolean;
-};
-export type NotesRecommendedTimelineResponse = components['schemas']['Note'][];
-export type NotesRecommendedTimelineAvailableResponse = {
-	available: boolean;
-};
-export type NotesRecommendedTimelineHasNewRequest = {
-	snapshotId: string;
-	includeFollowing?: boolean;
-};
-export type NotesRecommendedTimelineHasNewResponse = {
-	hasNew: boolean;
-};
+export type NotesRecommendedTimelineRequest = operations['notes___recommended-timeline']['requestBody']['content']['application/json'];
+export type NotesRecommendedTimelineResponse = operations['notes___recommended-timeline']['responses']['200']['content']['application/json'];
+export type NotesRecommendedTimelineAvailableResponse = operations['notes___recommended-timeline-available']['responses']['200']['content']['application/json'];
+export type NotesRecommendedTimelineHasNewRequest = operations['notes___recommended-timeline-has-new']['requestBody']['content']['application/json'];
+export type NotesRecommendedTimelineHasNewResponse = operations['notes___recommended-timeline-has-new']['responses']['200']['content']['application/json'];
 export type NotesRenotesRequest = operations['notes___renotes']['requestBody']['content']['application/json'];
 export type NotesRenotesResponse = operations['notes___renotes']['responses']['200']['content']['application/json'];
 export type NotesRepliesRequest = operations['notes___replies']['requestBody']['content']['application/json'];
@@ -643,6 +627,10 @@ export type UsersAchievementsRequest = operations['users___achievements']['reque
 export type UsersAchievementsResponse = operations['users___achievements']['responses']['200']['content']['application/json'];
 export type UsersClipsRequest = operations['users___clips']['requestBody']['content']['application/json'];
 export type UsersClipsResponse = operations['users___clips']['responses']['200']['content']['application/json'];
+export type UsersDislikedEmojiMemoRequest = operations['users___disliked-emoji-memo']['requestBody']['content']['application/json'];
+export type UsersDislikedEmojiMemoResponse = operations['users___disliked-emoji-memo']['responses']['200']['content']['application/json'];
+export type UsersDislikedEmojiMemoAddRequest = operations['users___disliked-emoji-memo-add']['requestBody']['content']['application/json'];
+export type UsersDislikedEmojiMemoDeleteRequest = operations['users___disliked-emoji-memo-delete']['requestBody']['content']['application/json'];
 export type UsersFeaturedNotesRequest = operations['users___featured-notes']['requestBody']['content']['application/json'];
 export type UsersFeaturedNotesResponse = operations['users___featured-notes']['responses']['200']['content']['application/json'];
 export type UsersFlashsRequest = operations['users___flashs']['requestBody']['content']['application/json'];

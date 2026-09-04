@@ -2084,6 +2084,11 @@ declare namespace entities {
         NotesReactionsResponse,
         NotesReactionsCreateRequest,
         NotesReactionsDeleteRequest,
+        NotesRecommendedTimelineRequest,
+        NotesRecommendedTimelineResponse,
+        NotesRecommendedTimelineAvailableResponse,
+        NotesRecommendedTimelineHasNewRequest,
+        NotesRecommendedTimelineHasNewResponse,
         NotesRenotesRequest,
         NotesRenotesResponse,
         NotesRepliesRequest,
@@ -2165,6 +2170,10 @@ declare namespace entities {
         UsersAchievementsResponse,
         UsersClipsRequest,
         UsersClipsResponse,
+        UsersDislikedEmojiMemoRequest,
+        UsersDislikedEmojiMemoResponse,
+        UsersDislikedEmojiMemoAddRequest,
+        UsersDislikedEmojiMemoDeleteRequest,
         UsersFeaturedNotesRequest,
         UsersFeaturedNotesResponse,
         UsersFlashsRequest,
@@ -3085,6 +3094,21 @@ type NotesReactionsRequest = operations['notes___reactions']['requestBody']['con
 type NotesReactionsResponse = operations['notes___reactions']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
+type NotesRecommendedTimelineAvailableResponse = operations['notes___recommended-timeline-available']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
+type NotesRecommendedTimelineHasNewRequest = operations['notes___recommended-timeline-has-new']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type NotesRecommendedTimelineHasNewResponse = operations['notes___recommended-timeline-has-new']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
+type NotesRecommendedTimelineRequest = operations['notes___recommended-timeline']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type NotesRecommendedTimelineResponse = operations['notes___recommended-timeline']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
 type NotesRenotesRequest = operations['notes___renotes']['requestBody']['content']['application/json'];
 
 // @public (undocumented)
@@ -3627,6 +3651,18 @@ type UsersClipsRequest = operations['users___clips']['requestBody']['content']['
 
 // @public (undocumented)
 type UsersClipsResponse = operations['users___clips']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoAddRequest = operations['users___disliked-emoji-memo-add']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoDeleteRequest = operations['users___disliked-emoji-memo-delete']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoRequest = operations['users___disliked-emoji-memo']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type UsersDislikedEmojiMemoResponse = operations['users___disliked-emoji-memo']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
 type UsersFeaturedNotesRequest = operations['users___featured-notes']['requestBody']['content']['application/json'];

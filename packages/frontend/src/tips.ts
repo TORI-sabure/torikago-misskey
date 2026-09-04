@@ -40,3 +40,4 @@ export function hideAllTips() {
 	}
 	store.set('tips', v);
 }
+
