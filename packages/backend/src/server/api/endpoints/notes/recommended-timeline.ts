@@ -140,7 +140,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// The host has a known midnight load spike. Do not make a reader wait
 				// for a fresh ranking if the browser already has a usable snapshot:
 				// carry that fixed snapshot forward instead. Returning an empty array
-				// here used to render "No notes" for every reader from 00:00 to 00:09.
+				// here used to render "No notes" for every reader during the protected window.
 				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:${ps.previousIncludeFollowing ? 'home' : 'discovery'}`;
 				const previousResultIds = previousResultKey == null ? [] : await this.redisClient.lrange(previousResultKey, 0, -1);
 				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousResultIds.length > 0) {
@@ -252,7 +252,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 	private isMidnightProtectionWindow(): boolean {
 		const now = new Date();
-		return now.getHours() === 0 && now.getMinutes() < 10;
+		return now.getHours() === 0 && now.getMinutes() < 1;
 	}
 
 	private settings(): Settings {
