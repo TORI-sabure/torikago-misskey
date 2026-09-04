@@ -137,17 +137,35 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
 			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 			if (resultIds.length === 0) {
-				// The host has a known midnight load spike. Existing snapshots remain
-				// readable, but avoid starting the relatively expensive first ranking
-				// pass during this window. A later manual refresh will generate it.
-				if (this.isMidnightProtectionWindow()) return [];
-				resultIds = await this.buildRecommendation(me, ps.includeFollowing, settings, new Set(), 0, settings.resultLimit, ps.snapshotId);
-				const pipeline = this.redisClient.pipeline().del(resultKey);
-				if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
-				pipeline.expire(resultKey, settings.snapshotHours * 3600);
-				pipeline.set(`${resultKey}:candidate-cursor`, '0', 'EX', settings.snapshotHours * 3600);
-				pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
-				await pipeline.exec();
+				// The host has a known midnight load spike. Do not make a reader wait
+				// for a fresh ranking if the browser already has a usable snapshot:
+				// carry that fixed snapshot forward instead. Returning an empty array
+				// here used to render "No notes" for every reader during the protected window.
+				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:${ps.previousIncludeFollowing ? 'home' : 'discovery'}`;
+				const previousResultIds = previousResultKey == null ? [] : await this.redisClient.lrange(previousResultKey, 0, -1);
+				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousResultIds.length > 0) {
+					const previousSeenIds = await this.redisClient.smembers(`${previousResultKey}:seen`);
+					const pipeline = this.redisClient.pipeline().del(resultKey);
+					pipeline.rpush(resultKey, ...previousResultIds);
+					pipeline.expire(resultKey, settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:candidate-cursor`, '0', 'EX', settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
+					if (previousSeenIds.length > 0) pipeline.sadd(`${resultKey}:seen`, ...previousSeenIds);
+					pipeline.expire(`${resultKey}:seen`, settings.snapshotHours * 3600);
+					await pipeline.exec();
+					resultIds = previousResultIds;
+				} else {
+					// A first-time reader has no snapshot to reuse. Generate one rather
+					// than presenting an empty timeline; this is request-driven, not a
+					// midnight-wide background job.
+					resultIds = await this.buildRecommendation(me, ps.includeFollowing, settings, new Set(), 0, settings.resultLimit, ps.snapshotId);
+					const pipeline = this.redisClient.pipeline().del(resultKey);
+					if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
+					pipeline.expire(resultKey, settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:candidate-cursor`, '0', 'EX', settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
+					await pipeline.exec();
+				}
 			}
 
 			// Older snapshots may have been created before target-note de-duplication
@@ -234,7 +252,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 	private isMidnightProtectionWindow(): boolean {
 		const now = new Date();
-		return now.getHours() === 0 && now.getMinutes() < 10;
+		return now.getHours() === 0 && now.getMinutes() < 1;
 	}
 
 	private settings(): Settings {
