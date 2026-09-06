@@ -37,6 +37,7 @@ type Settings = {
 	botPenalty: number;
 	twoHopRenoteBonus: number;
 	negativePenalty: number;
+	minimumScore: number;
 	forcedLimit: number;
 	forcedAccounts: string[];
 	negativeWords: string[];
@@ -66,6 +67,7 @@ const defaults: Settings = {
 	botPenalty: 3,
 	twoHopRenoteBonus: 6,
 	negativePenalty: 8,
+	minimumScore: 0,
 	forcedLimit: 3,
 	forcedAccounts: [],
 	negativeWords: [],
@@ -268,7 +270,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
 			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
-			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), forcedLimit: integer('forcedLimit', 0, 20),
+			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), forcedLimit: integer('forcedLimit', 0, 20),
 			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
 	}
@@ -371,8 +373,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const uniqueScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
 		const forced = uniqueScored.filter(item => item.forced).slice(0, settings.forcedLimit);
 		const forcedTargets = new Set(forced.map(item => item.targetId));
+		// Forced items deliberately bypass this limit, but all other low-quality
+		// candidates are excluded before source and display-slot selection.
+		const eligible = uniqueScored.filter(item => item.forced || item.quality >= settings.minimumScore);
 		const selectionSettings = resultLimit === settings.resultLimit ? settings : { ...settings, resultLimit };
-		const selected = this.selectSources(uniqueScored.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, true);
+		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, true, seed);
 		// Forced rules are priority rules, not merely a score bonus. Keep these at the
 		// head of the fixed snapshot. When the user asks to mix Home, retain the Home
 		// portion's chronological order while leaving the other sources score-mixed.
@@ -382,7 +387,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return [...forced, ...regular].slice(0, resultLimit).map(item => item.displayId);
 	}
 
-	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, includeFollowing: boolean): T[] {
+	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, includeFollowing: boolean, seed: string): T[] {
 		const bySource = new Map(['following', 'twoHop', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
 		const percentages: Array<[string, number]> = includeFollowing
 			? [['twoHop', settings.twoHopPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]]
@@ -395,8 +400,15 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			let picked: T | undefined;
 			for (const source of sources) {
 				const list = bySource.get(source) ?? [];
-				picked = list.find(item => !targets.has(item.targetId) && (counts.get(item.authorId) ?? 0) < settings.maxNotesPerAuthor);
-				if (picked != null) { list.splice(list.indexOf(picked), 1); break; }
+				const eligible = list.filter(item => !targets.has(item.targetId) && (counts.get(item.authorId) ?? 0) < settings.maxNotesPerAuthor);
+				if (eligible.length > 0) {
+					// Sampling from the stronger portion rather than always taking rank 1
+					// prevents every snapshot from having the same score-heavy head.
+					const windowSize = Math.max(1, Math.ceil(eligible.length * 0.6));
+					picked = eligible[Math.floor(this.seededRandom(`${seed}:source:${source}:${i}`) * windowSize)]!;
+					list.splice(list.indexOf(picked), 1);
+					break;
+				}
 			}
 			if (picked == null) break;
 			out.push(picked); targets.add(picked.targetId); counts.set(picked.authorId, (counts.get(picked.authorId) ?? 0) + 1);
@@ -423,7 +435,17 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				if (counts[type] > order.filter(x => x === type).length) order.push(type);
 			}
 		}
-		for (const type of order) { const item = pools[type].find(x => !used.has(x)); if (item != null) { output.push(item); used.add(item); } }
+		for (const [index, type] of order.entries()) {
+			const candidates = pools[type].filter(item => !used.has(item));
+			if (candidates.length === 0) continue;
+			// Draw independently from each score/freshness category. The seed keeps
+			// pagination stable while avoiding a concentration of the top-ranked
+			// notes at the beginning of every response.
+			const windowSize = Math.max(1, Math.ceil(candidates.length * 0.6));
+			const item = candidates[Math.floor(this.seededRandom(`${seed}:display:${type}:${index}`) * windowSize)]!;
+			output.push(item);
+			used.add(item);
+		}
 		// The first slots preserve a deliberate quality/freshness mix. Shuffle the
 		// remaining eligible items with a snapshot-stable seed so lower-scored notes
 		// are not deterministically relegated to the bottom on every refresh.

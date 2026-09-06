@@ -134,12 +134,19 @@ const recommendedSnapshotSessionKey = `torikago:recommended:snapshot:${recommend
 const storedRecommendedSnapshotId = window.sessionStorage.getItem(recommendedSnapshotSessionKey);
 const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
 const reloadsBrowser = navigationEntry?.type === 'reload';
-const initialRecommendedSnapshotId = recommendedSnapshots.get(recommendedSnapshotKey) ?? (reloadsBrowser ? null : storedRecommendedSnapshotId) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+// This component also powers Home, Local, and other timelines. Only an actual
+// recommended timeline may create or replace its snapshot; otherwise switching
+// timelines on mobile can silently replace the ID before the user returns.
+const initialRecommendedSnapshotId = props.src === 'recommended'
+	? recommendedSnapshots.get(recommendedSnapshotKey) ?? (reloadsBrowser ? null : storedRecommendedSnapshotId) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+	: '';
 const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
 const previousRecommendedSnapshotId = ref(reloadsBrowser ? storedRecommendedSnapshotId : null);
 const previousRecommendedIncludeFollowing = ref(prefer.r.includeFollowingInRecommendedTimeline.value);
-recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
-window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
+if (props.src === 'recommended') {
+	recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
+	window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
+}
 const recommendedRefreshAvailable = ref(false);
 
 if (props.src === 'antenna') {
