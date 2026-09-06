@@ -142,7 +142,7 @@ const initialRecommendedSnapshotId = props.src === 'recommended'
 	: '';
 const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
 const previousRecommendedSnapshotId = ref(reloadsBrowser ? storedRecommendedSnapshotId : null);
-const previousRecommendedIncludeFollowing = ref(prefer.r.includeFollowingInRecommendedTimeline.value);
+const previousRecommendedIncludeFollowing = ref(true);
 if (props.src === 'recommended') {
 	recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
 	window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
@@ -179,7 +179,7 @@ if (props.src === 'antenna') {
 			snapshotId: recommendedSnapshotId.value,
 			previousSnapshotId: previousRecommendedSnapshotId.value ?? undefined,
 			previousIncludeFollowing: previousRecommendedIncludeFollowing.value,
-			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+			includeFollowing: true,
 			withFiles: props.onlyFiles ? true : undefined,
 			withSensitive: props.withSensitive,
 		})),
@@ -342,7 +342,7 @@ if (props.src === 'recommended') {
 	useInterval(async () => {
 		const result = await misskeyApi('notes/recommended-timeline-has-new', {
 			snapshotId: recommendedSnapshotId.value,
-			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+			includeFollowing: true,
 		});
 		recommendedRefreshAvailable.value = result.hasNew;
 	}, 60_000, {
@@ -492,7 +492,7 @@ if (store.s.realtimeMode) {
 	connectChannel();
 }
 
-watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes, prefer.r.includeFollowingInRecommendedTimeline.value], () => {
+watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes], () => {
 	if (store.s.realtimeMode) {
 		disconnectChannel();
 		connectChannel();
@@ -515,7 +515,7 @@ function reloadTimeline() {
 			// notes to the paginator.
 			skipRecommendedParameterReload = true;
 			previousRecommendedSnapshotId.value = recommendedSnapshotId.value;
-			previousRecommendedIncludeFollowing.value = prefer.r.includeFollowingInRecommendedTimeline.value;
+			previousRecommendedIncludeFollowing.value = true;
 			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 			recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
 			window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);

@@ -231,9 +231,6 @@ export const PREF_DEF = definePreferences({
 	showMutualAccountBadge: {
 		default: false,
 	},
-	includeFollowingInRecommendedTimeline: {
-		default: false,
-	},
 	enableQuickAddMfmFunction: {
 		default: false,
 	},

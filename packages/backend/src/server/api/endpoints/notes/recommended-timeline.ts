@@ -136,14 +136,17 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const allowedUserIds = this.serverSettings.recommendedTimelineAllowedUserIds ?? [];
 			if (allowedUserIds.length > 0 && !allowedUserIds.includes(me.id)) throw new ApiError(meta.errors.notAllowed);
 			const settings = this.settings();
-			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
+			// Home-eligible notes are always scored as recommendation candidates. Keep
+			// accepting the former request parameters for older clients, but never let
+			// them create a separate discovery-only result set.
+			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:home`;
 			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 			if (resultIds.length === 0) {
 				// The host has a known midnight load spike. Do not make a reader wait
 				// for a fresh ranking if the browser already has a usable snapshot:
 				// carry that fixed snapshot forward instead. Returning an empty array
 				// here used to render "No notes" for every reader during the protected window.
-				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:${ps.previousIncludeFollowing ? 'home' : 'discovery'}`;
+				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:home`;
 				const previousResultIds = previousResultKey == null ? [] : await this.redisClient.lrange(previousResultKey, 0, -1);
 				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousResultIds.length > 0) {
 					const previousSeenIds = await this.redisClient.smembers(`${previousResultKey}:seen`);
@@ -160,7 +163,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					// A first-time reader has no snapshot to reuse. Generate one rather
 					// than presenting an empty timeline; this is request-driven, not a
 					// midnight-wide background job.
-					resultIds = await this.buildRecommendation(me, ps.includeFollowing, settings, new Set(), 0, settings.resultLimit, ps.snapshotId);
+					resultIds = await this.buildRecommendation(me, settings, new Set(), 0, settings.resultLimit, ps.snapshotId);
 					const pipeline = this.redisClient.pipeline().del(resultKey);
 					if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
 					pipeline.expire(resultKey, settings.snapshotHours * 3600);
@@ -201,7 +204,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				const cursorKey = `${resultKey}:candidate-cursor`;
 				const cursor = Number(await this.redisClient.get(cursorKey) ?? '0');
 				const batchSize = Math.min(100, Math.max(ps.limit * 2, 30));
-				const extraIds = await this.buildRecommendation(me, ps.includeFollowing, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId);
+				const extraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId);
 				if (extraIds.length > 0) {
 					// Multiple widgets or Deck columns may share this snapshot. Append only
 					// when its length is unchanged, so concurrent end-of-list requests can
@@ -275,7 +278,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		};
 	}
 
-	private async buildRecommendation(me: MiLocalUser, includeFollowing: boolean, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = ''): Promise<string[]> {
+	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = ''): Promise<string[]> {
 		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + settings.candidateScanLimit - 1);
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
 		// Keep the Home portion faithful for the account owner as well. In particular,
@@ -312,17 +315,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// must not crowd out followed accounts before scoring. Followed posts remain a
 		// normal recommendation source even when the explicit Home mix is off.
 		const directQuery = createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) });
-		// When the Home mix is off, followed accounts are still scored according to
-		// the configured source share. Only notes eligible for the shared candidate
-		// pool may enter through that path; private/followers-only and ordinary Home
-		// posts are Home timeline material, not recommendations.
-		if (!includeFollowing) {
-			directQuery.andWhere(`(
-				note.visibility = 'public'
-				OR (note.visibility = 'home' AND cardinality(note.tags) > 0)
-				OR (note.visibility = 'home' AND note.renoteId IS NOT NULL AND renote.visibility = 'public' AND (note.text IS NULL OR note.text = '') AND (note.cw IS NULL OR note.cw = ''))
-			)`);
-		}
 		const noteLists = await Promise.all([
 			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
 			directIds.length > 0 ? directQuery.getMany() : [],
@@ -377,21 +369,16 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// candidates are excluded before source and display-slot selection.
 		const eligible = uniqueScored.filter(item => item.forced || item.quality >= settings.minimumScore);
 		const selectionSettings = resultLimit === settings.resultLimit ? settings : { ...settings, resultLimit };
-		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, true, seed);
-		// Forced rules are priority rules, not merely a score bonus. Keep these at the
-		// head of the fixed snapshot. When the user asks to mix Home, retain the Home
-		// portion's chronological order while leaving the other sources score-mixed.
-		const regular = includeFollowing
-			? [...selected.filter(item => item.source === 'following').sort((a, b) => b.id.localeCompare(a.id)), ...this.interleave(selected.filter(item => item.source !== 'following'), settings, seed)]
-			: this.interleave(selected, settings, seed);
+		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed);
+		// Home-eligible notes are scored and interleaved with every other source;
+		// they are no longer inserted as an independent chronological Home segment.
+		const regular = this.interleave(selected, settings, seed);
 		return [...forced, ...regular].slice(0, resultLimit).map(item => item.displayId);
 	}
 
-	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, includeFollowing: boolean, seed: string): T[] {
+	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, seed: string): T[] {
 		const bySource = new Map(['following', 'twoHop', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
-		const percentages: Array<[string, number]> = includeFollowing
-			? [['twoHop', settings.twoHopPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]]
-			: [['twoHop', settings.twoHopPercent], ['unknown', settings.unknownPercent]];
+		const percentages: Array<[string, number]> = [['twoHop', settings.twoHopPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
 		if (percentages.every(([, percent]) => percent === 0)) percentages[0]![1] = 100;
 		const out: T[] = []; const counts = new Map<string, number>(); const targets = new Set<string>();
 		for (let i = 0; i < settings.resultLimit; i++) {
