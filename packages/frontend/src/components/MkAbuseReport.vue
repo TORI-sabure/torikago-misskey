@@ -48,6 +48,14 @@ SPDX-License-Identifier: AGPL-3.0-only
 			</div>
 		</MkFolder>
 
+		<MkFolder v-if="reportReasons.length > 0" :defaultOpen="true">
+			<template #icon><i class="ti ti-list-check"></i></template>
+			<template #label>通報理由</template>
+			<ul :class="$style.reasons">
+				<li v-for="reason in reportReasons" :key="reason">{{ reason }}</li>
+			</ul>
+		</MkFolder>
+
 		<MkFolder :withSpacer="false">
 			<template #icon><MkAvatar :user="report.reporter" style="width: 18px; height: 18px;"/></template>
 			<template #label>{{ i18n.ts.reporter }}: <MkAcct :user="report.reporter"/></template>
@@ -78,7 +86,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 </template>
 
 <script lang="ts" setup>
-import { provide, ref, watch } from 'vue';
+import { computed, provide, ref, watch } from 'vue';
 import * as Misskey from 'misskey-js';
 import MkButton from '@/components/MkButton.vue';
 import MkSwitch from '@/components/MkSwitch.vue';
@@ -95,6 +103,8 @@ import { createRouter } from '@/router.js';
 const props = defineProps<{
 	report: Misskey.entities.AdminAbuseUserReportsResponse[number];
 }>();
+
+const reportReasons = computed(() => (props.report as typeof props.report & { reasons?: string[] }).reasons ?? []);
 
 const emit = defineEmits<{
 	(ev: 'resolved', reportId: string): void;
@@ -148,6 +158,13 @@ function showMenu(ev: PointerEvent) {
 	}], ev.currentTarget ?? ev.target);
 }
 </script>
+
+<style lang="scss" module>
+.reasons {
+	margin: 0;
+	padding-inline-start: 1.5em;
+}
+</style>
 
 <style lang="scss" module>
 </style>

@@ -154,6 +154,7 @@ export interface AdminEventTypes {
 		id: MiAbuseUserReport['id'];
 		targetUserId: MiUser['id'],
 		reporterId: MiUser['id'],
+		reasons: string[],
 		comment: string;
 	};
 }

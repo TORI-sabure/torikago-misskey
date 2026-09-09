@@ -66,6 +66,12 @@ export class MiAbuseUserReport {
 	public comment: string;
 
 	@Column('varchar', {
+		array: true,
+		default: '{}',
+	})
+	public reasons: string[];
+
+	@Column('varchar', {
 		length: 8192, default: '',
 	})
 	public moderationNote: string;

@@ -76,6 +76,7 @@ export class AbuseReportNotificationService implements OnApplicationShutdown {
 						targetUserId: abuseReport.targetUserId,
 						reporterId: abuseReport.reporterId,
 						comment: abuseReport.comment,
+						reasons: abuseReport.reasons,
 					},
 				);
 			}
