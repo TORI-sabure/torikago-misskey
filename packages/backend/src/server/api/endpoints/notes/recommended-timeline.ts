@@ -347,6 +347,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// Keep the renoter as the social signal, but score the note the reader
 			// will actually see. Quotes intentionally retain their own wrapper here.
 			const rankingNote = plainRenote ? note.renote! : note;
+			// Do not recommend the reader's own post. This also covers a public
+			// original that another account has purely renoted.
+			if (rankingNote.userId === me.id) return [];
 			const reactions = Object.values(rankingNote.reactions).reduce((sum, count) => sum + count, 0);
 			const ageHours = Math.max(0, (now - this.idService.parse(rankingNote.id).date.getTime()) / 3600000);
 			const freshness = Math.pow(0.5, ageHours / 8);
