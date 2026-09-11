@@ -287,9 +287,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const renoteAffinity = new Map(context.renoteAffinity);
 		const directSet = new Set(directIds);
 		const twoHopProof = new Map(twoHopRows.map(row => [row.userId, Number(row.socialProof)]));
-		const createVisibleQuery = () => {
+		const createVisibleQuery = (limit = settings.candidateScanLimit) => {
 			const query = this.notesRepository.createQueryBuilder('note').innerJoinAndSelect('note.user', 'user').leftJoinAndSelect('note.reply', 'reply').leftJoinAndSelect('reply.user', 'replyUser').leftJoinAndSelect('note.renote', 'renote').leftJoinAndSelect('renote.user', 'renoteUser')
-				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(settings.candidateScanLimit);
+				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(limit);
 			this.queryService.generateVisibilityQuery(query, me);
 			this.queryService.generateBaseNoteFilteringQuery(query, me);
 			this.queryService.generateMutedUserRenotesQueryForNotes(query, me);
@@ -298,10 +298,22 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// Keep Home and discovery retrieval independent. A busy global candidate pool
 		// must not crowd out followed accounts before scoring. Followed posts remain a
 		// normal recommendation source even when the explicit Home mix is off.
-		const directQuery = createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) });
+		// A bounded per-source fetch makes the result genuinely personal even when
+		// the shared Redis candidate pool is dominated by a busy relay. The cap is
+		// intentionally small: ranking needs a varied shortlist, not every note
+		// written by every followed account.
+		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
+		const directQuery = createVisibleQuery(sourceNoteLimit).andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) });
+		const twoHopQuery = twoHopIds.length > 0
+			? createVisibleQuery(sourceNoteLimit)
+				.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds })
+				.andWhere('note.visibility = \'public\'')
+				.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) })
+			: null;
 		const noteLists = await Promise.all([
 			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
 			directIds.length > 0 ? directQuery.getMany() : [],
+			twoHopQuery?.getMany() ?? [],
 		]);
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
 		// A plain renote is displayed as its original, so include the original's
