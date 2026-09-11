@@ -51,6 +51,7 @@ import MkTextarea from '@/components/MkTextarea.vue';
 import MkButton from '@/components/MkButton.vue';
 import * as os from '@/os.js';
 import { i18n } from '@/i18n.js';
+import { misskeyApi } from '@/utility/misskey-api.js';
 
 const props = defineProps<{
 	user: Misskey.entities.UserLite;
@@ -81,7 +82,7 @@ async function loadAbuseReportReasons() {
 	reasonsLoaded.value = false;
 	reasonsLoadFailed.value = false;
 	try {
-		const instanceMeta = await os.api('meta', { detail: false }) as { abuseReportReasons?: unknown };
+		const instanceMeta = await misskeyApi('meta', { detail: false }) as { abuseReportReasons?: unknown };
 		const configuredReasons = instanceMeta.abuseReportReasons;
 		if (Array.isArray(configuredReasons) && configuredReasons.length > 0) {
 			abuseReportReasons.value = configuredReasons as string[];
