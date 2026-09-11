@@ -79,7 +79,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v8';
+const recommendationCacheVersion = 'v9';
 
 type RecommendationContext = {
 	followingIds: string[];
@@ -364,9 +364,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const uniqueScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
 		const forced = uniqueScored.filter(item => item.forced).slice(0, settings.forcedLimit);
 		const forcedTargets = new Set(forced.map(item => item.targetId));
-		// Forced items deliberately bypass this limit, but all other low-quality
-		// candidates are excluded before source and display-slot selection.
-		const eligible = uniqueScored.filter(item => item.forced || item.quality >= settings.minimumScore);
+		// The minimum score is a discovery-quality threshold. Do not apply it to
+		// notes from accounts the reader follows: Home and followers-only notes are
+		// intentionally less public, so they do not receive the public-note bonus,
+		// yet they are already authorised by the normal visibility query above.
+		// They must remain available for the configured following-source share.
+		const eligible = uniqueScored.filter(item => item.forced || item.source === 'following' || item.quality >= settings.minimumScore);
 		const selectionSettings = resultLimit === settings.resultLimit ? settings : { ...settings, resultLimit };
 		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed);
 		// Home-eligible notes are scored and interleaved with every other source;
