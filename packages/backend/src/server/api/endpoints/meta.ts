@@ -6,7 +6,6 @@
 import { Injectable } from '@nestjs/common';
 import { Endpoint } from '@/server/api/endpoint-base.js';
 import { MetaEntityService } from '@/core/entities/MetaEntityService.js';
-import { MetaService } from '@/core/MetaService.js';
 
 export const meta = {
 	tags: ['meta'],
@@ -34,11 +33,9 @@ export const paramDef = {
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export
 	constructor(
 		private metaEntityService: MetaEntityService,
-		private metaService: MetaService,
 	) {
 		super(meta, paramDef, async (ps, me) => {
-			const instanceMeta = await this.metaService.fetch(true);
-			return ps.detail ? await this.metaEntityService.packDetailed(instanceMeta) : await this.metaEntityService.pack(instanceMeta);
+			return ps.detail ? await this.metaEntityService.packDetailed() : await this.metaEntityService.pack();
 		});
 	}
 }
