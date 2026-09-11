@@ -38,6 +38,7 @@ type Settings = {
 	twoHopRenoteBonus: number;
 	negativePenalty: number;
 	minimumScore: number;
+	fallbackMaxAgeDays: number;
 	forcedLimit: number;
 	forcedAccounts: string[];
 	negativeWords: string[];
@@ -70,6 +71,7 @@ const defaults: Settings = {
 	twoHopRenoteBonus: 6,
 	negativePenalty: 8,
 	minimumScore: 0,
+	fallbackMaxAgeDays: 90,
 	forcedLimit: 3,
 	forcedAccounts: [],
 	negativeWords: [],
@@ -79,7 +81,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v9';
+const recommendationCacheVersion = 'v10';
 
 type RecommendationContext = {
 	followingIds: string[];
@@ -265,7 +267,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
 			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
-			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), forcedLimit: integer('forcedLimit', 0, 20),
+			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
 			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
 	}
@@ -274,10 +276,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + settings.candidateScanLimit - 1);
 		const context = await this.getRecommendationContext(me);
 		const followingIds = context.followingIds;
-		// Keep the Home portion faithful for the account owner as well. In particular,
-		// this lets a specified note addressed to the owner pass the normal visibility
-		// query without ever making it a shared recommendation candidate.
-		const directIds = [me.id, ...followingIds];
+		const directIds = followingIds;
 		const twoHopRows = context.twoHopRows;
 		const twoHopIds = twoHopRows.map(row => row.userId);
 		if (candidateIds.length === 0 && directIds.length === 0) return [];
@@ -303,18 +302,39 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// intentionally small: ranking needs a varied shortlist, not every note
 		// written by every followed account.
 		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
-		const directQuery = createVisibleQuery(sourceNoteLimit).andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) });
-		const twoHopQuery = twoHopIds.length > 0
-			? createVisibleQuery(sourceNoteLimit)
-				.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds })
-				.andWhere('note.visibility = \'public\'')
-				.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) })
-			: null;
-		const noteLists = await Promise.all([
+		const fetchDirectNotes = (days: number) => directIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(sourceNoteLimit)
+			.andWhere('note.userId = ANY(:directIds)', { directIds })
+			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
+			.getMany();
+		const fetchTwoHopNotes = (days: number) => twoHopIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(sourceNoteLimit)
+			.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds })
+			.andWhere('note.visibility = \'public\'')
+			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
+			.getMany();
+		const [sharedNotes, initialDirectNotes, initialTwoHopNotes] = await Promise.all([
 			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
-			directIds.length > 0 ? directQuery.getMany() : [],
-			twoHopQuery?.getMany() ?? [],
+			fetchDirectNotes(7),
+			fetchTwoHopNotes(7),
 		]);
+		let directNotes = initialDirectNotes;
+		let twoHopNotes = initialTwoHopNotes;
+		const sourceTarget = (percent: number) => {
+			const total = settings.twoHopPercent + settings.followingPercent + settings.unknownPercent;
+			return percent === 0 ? 0 : Math.max(1, Math.ceil(resultLimit * percent / Math.max(total, 1)));
+		};
+		// Most requests inspect only the recent week. When a quiet period leaves a
+		// personalised source below its configured share, widen only that source in
+		// stages. This avoids turning every recommendation request into a 90-day scan.
+		for (const days of [...new Set([30, settings.fallbackMaxAgeDays])].filter(days => days > 7)) {
+			const [olderDirect, olderTwoHop] = await Promise.all([
+				directNotes.length < sourceTarget(settings.followingPercent) ? fetchDirectNotes(days) : Promise.resolve([]),
+				twoHopNotes.length < sourceTarget(settings.twoHopPercent) ? fetchTwoHopNotes(days) : Promise.resolve([]),
+			]);
+			directNotes = [...new Map([...directNotes, ...olderDirect].map(note => [note.id, note])).values()];
+			twoHopNotes = [...new Map([...twoHopNotes, ...olderTwoHop].map(note => [note.id, note])).values()];
+			if (directNotes.length >= sourceTarget(settings.followingPercent) && twoHopNotes.length >= sourceTarget(settings.twoHopPercent)) break;
+		}
+		const noteLists = [sharedNotes, directNotes, twoHopNotes];
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
 		// A plain renote is displayed as its original, so include the original's
 		// files when evaluating the sensitive-file penalty as well.
