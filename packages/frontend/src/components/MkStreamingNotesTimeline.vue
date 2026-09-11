@@ -91,6 +91,11 @@ import { Paginator } from '@/utility/paginator.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 
 const recommendedSnapshots = new Map<string, string>();
+// `performance` keeps reporting "reload" for the whole lifetime of the
+// document. Consume that signal once: a timeline tab change also recreates
+// this component, but must never be treated as another browser reload.
+let refreshRecommendedSnapshotOnNextMount = false;
+let hasInitializedRecommendedReloadHandling = false;
 const recommendedTexts: Record<string, { newAvailable: string }> = {
 	'en-US': { newAvailable: 'New recommendations are available' },
 	'ja-JP': { newAvailable: '新しいおすすめがあります' },
@@ -133,15 +138,20 @@ const recommendedSnapshotKey = `${$i?.id ?? 'guest'}:recommended`;
 const recommendedSnapshotSessionKey = `torikago:recommended:snapshot:${recommendedSnapshotKey}`;
 const storedRecommendedSnapshotId = window.sessionStorage.getItem(recommendedSnapshotSessionKey);
 const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-const reloadsBrowser = navigationEntry?.type === 'reload';
+if (!hasInitializedRecommendedReloadHandling) {
+	refreshRecommendedSnapshotOnNextMount = navigationEntry?.type === 'reload';
+	hasInitializedRecommendedReloadHandling = true;
+}
+const refreshRecommendedSnapshot = props.src === 'recommended' && refreshRecommendedSnapshotOnNextMount;
+if (refreshRecommendedSnapshot) refreshRecommendedSnapshotOnNextMount = false;
 // This component also powers Home, Local, and other timelines. Only an actual
 // recommended timeline may create or replace its snapshot; otherwise switching
 // timelines on mobile can silently replace the ID before the user returns.
 const initialRecommendedSnapshotId = props.src === 'recommended'
-	? recommendedSnapshots.get(recommendedSnapshotKey) ?? (reloadsBrowser ? null : storedRecommendedSnapshotId) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+	? recommendedSnapshots.get(recommendedSnapshotKey) ?? (refreshRecommendedSnapshot ? null : storedRecommendedSnapshotId) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 	: '';
 const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
-const previousRecommendedSnapshotId = ref(reloadsBrowser ? storedRecommendedSnapshotId : null);
+const previousRecommendedSnapshotId = ref(refreshRecommendedSnapshot ? storedRecommendedSnapshotId : null);
 const previousRecommendedIncludeFollowing = ref(true);
 if (props.src === 'recommended') {
 	recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
