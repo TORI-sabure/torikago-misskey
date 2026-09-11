@@ -81,15 +81,8 @@ async function loadAbuseReportReasons() {
 	reasonsLoaded.value = false;
 	reasonsLoadFailed.value = false;
 	try {
-		let configuredReasons: unknown;
-		try {
-			configuredReasons = await os.api('users/report-abuse-reasons' as never);
-		} catch {
-			// Keep a fallback on the established report endpoint. This avoids making
-			// the dialog depend on a separately registered endpoint during upgrades.
-			const response = await os.api('users/report-abuse', { getReasons: true } as never) as { reasons?: unknown };
-			configuredReasons = response.reasons;
-		}
+		const instanceMeta = await os.api('meta', { detail: false }) as { abuseReportReasons?: unknown };
+		const configuredReasons = instanceMeta.abuseReportReasons;
 		if (Array.isArray(configuredReasons) && configuredReasons.length > 0) {
 			abuseReportReasons.value = configuredReasons as string[];
 			reasons.value = reasons.value.filter(reason => abuseReportReasons.value.includes(reason));

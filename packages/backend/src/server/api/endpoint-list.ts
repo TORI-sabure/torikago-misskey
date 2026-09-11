@@ -426,7 +426,6 @@ export * as 'users/reactions' from './endpoints/users/reactions.js';
 export * as 'users/recommendation' from './endpoints/users/recommendation.js';
 export * as 'users/relation' from './endpoints/users/relation.js';
 export * as 'users/report-abuse' from './endpoints/users/report-abuse.js';
-export * as 'users/report-abuse-reasons' from './endpoints/users/report-abuse-reasons.js';
 export * as 'users/search' from './endpoints/users/search.js';
 export * as 'users/search-by-username-and-host' from './endpoints/users/search-by-username-and-host.js';
 export * as 'users/show' from './endpoints/users/show.js';

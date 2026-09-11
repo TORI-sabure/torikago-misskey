@@ -45,23 +45,17 @@ export const meta = {
 			id: 'c827501f-5376-46da-a1c9-18d1d593cdca',
 		},
 
-		invalidParam: {
-			message: 'Invalid param.',
-			code: 'INVALID_PARAM',
-			id: '3d81ceae-475f-4600-b2a8-2bc116157532',
-		},
 	},
 } as const;
 
 export const paramDef = {
 	type: 'object',
 	properties: {
-		userId: { type: 'string', format: 'misskey:id', nullable: true },
-		comment: { type: 'string', minLength: 1, maxLength: 2048, nullable: true },
-		reasons: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 512 }, nullable: true },
-		getReasons: { type: 'boolean', default: false },
+		userId: { type: 'string', format: 'misskey:id' },
+		comment: { type: 'string', minLength: 1, maxLength: 2048 },
+		reasons: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 512 } },
 	},
-	required: [],
+	required: ['userId', 'comment', 'reasons'],
 } as const;
 
 @Injectable()
@@ -76,14 +70,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		super(meta, paramDef, async (ps, me) => {
 			const instanceMeta = await this.metaService.fetch(true);
 			const activeReasons = getAbuseReportReasons(instanceMeta.abuseReportReasons);
-			if (ps.getReasons) {
-				return { reasons: activeReasons };
-			}
-
-			if (ps.userId == null || ps.comment == null || ps.reasons == null) {
-				throw new ApiError(meta.errors.invalidParam);
-			}
-
 			if (ps.reasons.some(reason => !activeReasons.includes(reason))) {
 				throw new ApiError(meta.errors.invalidReason);
 			}
@@ -109,8 +95,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				comment: ps.comment,
 				reasons: ps.reasons,
 			}]);
-
-			return undefined;
 		});
 	}
 }
