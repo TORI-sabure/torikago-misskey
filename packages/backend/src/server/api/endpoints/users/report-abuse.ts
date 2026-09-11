@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { Inject, Injectable } from '@nestjs/common';
-import { DI } from '@/di-symbols.js';
-import type { MiMeta } from '@/models/Meta.js';
+import { Injectable } from '@nestjs/common';
 import { Endpoint } from '@/server/api/endpoint-base.js';
 import { GetterService } from '@/server/api/GetterService.js';
 import { RoleService } from '@/core/RoleService.js';
 import { AbuseReportService } from '@/core/AbuseReportService.js';
 import { getAbuseReportReasons } from '@/core/AbuseReportReasons.js';
+import { MetaService } from '@/core/MetaService.js';
 import { ApiError } from '../../error.js';
 
 export const meta = {
@@ -61,15 +60,15 @@ export const paramDef = {
 @Injectable()
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export
 	constructor(
-		@Inject(DI.meta)
-		private metaService: MiMeta,
+		private metaService: MetaService,
 
 		private getterService: GetterService,
 		private roleService: RoleService,
 		private abuseReportService: AbuseReportService,
 	) {
 		super(meta, paramDef, async (ps, me) => {
-			const activeReasons = getAbuseReportReasons(this.metaService.abuseReportReasons);
+			const instanceMeta = await this.metaService.fetch(true);
+			const activeReasons = getAbuseReportReasons(instanceMeta.abuseReportReasons);
 			if (ps.reasons.some(reason => !activeReasons.includes(reason))) {
 				throw new ApiError(meta.errors.invalidReason);
 			}

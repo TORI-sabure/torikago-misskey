@@ -90,12 +90,6 @@ import { isSeparatorNeeded, getSeparatorInfo } from '@/utility/timeline-date-sep
 import { Paginator } from '@/utility/paginator.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 
-const recommendedSnapshots = new Map<string, string>();
-// `performance` keeps reporting "reload" for the whole lifetime of the
-// document. Consume that signal once: a timeline tab change also recreates
-// this component, but must never be treated as another browser reload.
-let refreshRecommendedSnapshotOnNextMount = false;
-let hasInitializedRecommendedReloadHandling = false;
 const recommendedTexts: Record<string, { newAvailable: string }> = {
 	'en-US': { newAvailable: 'New recommendations are available' },
 	'ja-JP': { newAvailable: '新しいおすすめがあります' },
@@ -134,29 +128,10 @@ provide(DI.inChannel, computed(() => props.src === 'channel' ? props.channel ?? 
 let paginator: IPaginator<Misskey.entities.Note>;
 let skipRecommendedParameterReload = false;
 let timelineReloadPromise: Promise<void> | null = null;
-const recommendedSnapshotKey = `${$i?.id ?? 'guest'}:recommended`;
-const recommendedSnapshotSessionKey = `torikago:recommended:snapshot:${recommendedSnapshotKey}`;
-const storedRecommendedSnapshotId = window.sessionStorage.getItem(recommendedSnapshotSessionKey);
-const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-if (!hasInitializedRecommendedReloadHandling) {
-	refreshRecommendedSnapshotOnNextMount = navigationEntry?.type === 'reload';
-	hasInitializedRecommendedReloadHandling = true;
-}
-const refreshRecommendedSnapshot = props.src === 'recommended' && refreshRecommendedSnapshotOnNextMount;
-if (refreshRecommendedSnapshot) refreshRecommendedSnapshotOnNextMount = false;
-// This component also powers Home, Local, and other timelines. Only an actual
-// recommended timeline may create or replace its snapshot; otherwise switching
-// timelines on mobile can silently replace the ID before the user returns.
 const initialRecommendedSnapshotId = props.src === 'recommended'
-	? recommendedSnapshots.get(recommendedSnapshotKey) ?? (refreshRecommendedSnapshot ? null : storedRecommendedSnapshotId) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+	? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 	: '';
 const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
-const previousRecommendedSnapshotId = ref(refreshRecommendedSnapshot ? storedRecommendedSnapshotId : null);
-const previousRecommendedIncludeFollowing = ref(true);
-if (props.src === 'recommended') {
-	recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
-	window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
-}
 const recommendedRefreshAvailable = ref(false);
 
 if (props.src === 'antenna') {
@@ -187,8 +162,6 @@ if (props.src === 'antenna') {
 	paginator = markRaw(new Paginator('notes/recommended-timeline', {
 		computedParams: computed(() => ({
 			snapshotId: recommendedSnapshotId.value,
-			previousSnapshotId: previousRecommendedSnapshotId.value ?? undefined,
-			previousIncludeFollowing: previousRecommendedIncludeFollowing.value,
 			includeFollowing: true,
 			withFiles: props.onlyFiles ? true : undefined,
 			withSensitive: props.withSensitive,
@@ -524,11 +497,7 @@ function reloadTimeline() {
 			// that must own the transition, otherwise two responses append the same
 			// notes to the paginator.
 			skipRecommendedParameterReload = true;
-			previousRecommendedSnapshotId.value = recommendedSnapshotId.value;
-			previousRecommendedIncludeFollowing.value = true;
 			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-			recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
-			window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
 			recommendedRefreshAvailable.value = false;
 		}
 

@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { Inject, Injectable } from '@nestjs/common';
-import { DI } from '@/di-symbols.js';
-import type { MiMeta } from '@/models/Meta.js';
+import { Injectable } from '@nestjs/common';
 import { getAbuseReportReasons } from '@/core/AbuseReportReasons.js';
+import { MetaService } from '@/core/MetaService.js';
 import { Endpoint } from '@/server/api/endpoint-base.js';
 
 export const meta = {
@@ -33,9 +32,11 @@ export const paramDef = {
 @Injectable()
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export
 	constructor(
-		@Inject(DI.meta)
-		private metaService: MiMeta,
+		private metaService: MetaService,
 	) {
-		super(meta, paramDef, async () => getAbuseReportReasons(this.metaService.abuseReportReasons));
+		super(meta, paramDef, async () => {
+			const instanceMeta = await this.metaService.fetch(true);
+			return getAbuseReportReasons(instanceMeta.abuseReportReasons);
+		});
 	}
 }

@@ -17,7 +17,12 @@ SPDX-License-Identifier: AGPL-3.0-only
 		<div class="_gaps_m" :class="$style.root">
 			<div>
 				<div :class="$style.reasonLabel">通報理由 <span :class="$style.required">必須・複数選択可</span></div>
-				<div :class="$style.reasons">
+				<div v-if="!reasonsLoaded" :class="$style.reasonState">{{ reportReasonsText.loading }}</div>
+				<div v-else-if="reasonsLoadFailed" :class="$style.reasonState">
+					<span>{{ reportReasonsText.failed }}</span>
+					<MkButton small @click="loadAbuseReportReasons">{{ reportReasonsText.retry }}</MkButton>
+				</div>
+				<div v-else :class="$style.reasons">
 					<label v-for="reason in abuseReportReasons" :key="reason" :class="$style.reason">
 						<input v-model="reasons" type="checkbox" :value="reason"/>
 						<span>{{ reason }}</span>
@@ -31,7 +36,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 				</MkTextarea>
 			</div>
 			<div class="">
-				<MkButton primary full :disabled="comment.length === 0 || reasons.length === 0" @click="send">{{ i18n.ts.send }}</MkButton>
+				<MkButton primary full :disabled="!reasonsLoaded || reasonsLoadFailed || comment.length === 0 || reasons.length === 0" @click="send">{{ i18n.ts.send }}</MkButton>
 			</div>
 		</div>
 	</div>
@@ -59,32 +64,38 @@ const emit = defineEmits<{
 const uiWindow = useTemplateRef('uiWindow');
 const comment = ref(props.initialComment ?? '');
 const reasons = ref<string[]>([]);
-const defaultAbuseReportReasons = [
-	'権利を侵害する行為、また侵害する恐れがある財産、信用、名誉、プライバシー、肖像権を侵害している',
-	'身体、生命、自由、名誉、財産などに対して害悪を加えると公開している',
-	'他者に不利益を与えている',
-	'誹謗中傷または侮辱行為',
-	'公序良俗に反する',
-	'他者になりすましている',
-	'面識のない未成年と出会うことを主目的としてサービスを利用している',
-	'人の死体、裸体、児童ポルノ、人を殺傷する現場もしくは児童虐待に相当するファイルの投稿',
-	'管理権限を持たないユーザーによる他のユーザーに対しての規約違反の断定・処罰要求・排除行為（自治行為など）',
-	'13歳未満のユーザーにも関わらず顔写真など個人を特定できる情報を公開している',
-	'その他',
-] as const;
-const abuseReportReasons = ref<string[]>([...defaultAbuseReportReasons]);
+const abuseReportReasons = ref<string[]>([]);
+const reasonsLoaded = ref(false);
+const reasonsLoadFailed = ref(false);
+const reportReasonsTexts: Record<string, { loading: string; failed: string; retry: string }> = {
+	'en-US': { loading: 'Loading report reasons…', failed: 'Could not load report reasons.', retry: 'Retry' },
+	'ja-JP': { loading: '通報理由を読み込んでいます…', failed: '通報理由を読み込めませんでした。', retry: '再試行' },
+	'ja-KS': { loading: '通報理由を読み込んどるで…', failed: '通報理由を読み込めへんかったわ。', retry: 'もう一回やる' },
+	'ko-KR': { loading: '신고 사유를 불러오는 중…', failed: '신고 사유를 불러오지 못했습니다.', retry: '다시 시도' },
+	'zh-CN': { loading: '正在加载举报理由…', failed: '无法加载举报理由。', retry: '重试' },
+	'zh-TW': { loading: '正在載入檢舉理由…', failed: '無法載入檢舉理由。', retry: '重試' },
+};
+const reportReasonsText = reportReasonsTexts[window.document.documentElement.lang] ?? reportReasonsTexts['en-US']!;
 
-onMounted(async () => {
+async function loadAbuseReportReasons() {
+	reasonsLoaded.value = false;
+	reasonsLoadFailed.value = false;
 	try {
 		const configuredReasons = await os.api('users/report-abuse-reasons' as never);
 		if (Array.isArray(configuredReasons) && configuredReasons.length > 0) {
 			abuseReportReasons.value = configuredReasons as string[];
+			reasons.value = reasons.value.filter(reason => abuseReportReasons.value.includes(reason));
+		} else {
+			reasonsLoadFailed.value = true;
 		}
 	} catch {
-		// Keep the built-in defaults while upgrading a server that has not yet
-		// applied the migration.
+		reasonsLoadFailed.value = true;
+	} finally {
+		reasonsLoaded.value = true;
 	}
-});
+}
+
+onMounted(() => void loadAbuseReportReasons());
 
 function send() {
 	os.apiWithDialog('users/report-abuse', {
@@ -121,6 +132,12 @@ function send() {
 .reasons {
 	display: grid;
 	gap: 8px;
+}
+
+.reasonState {
+	display: flex;
+	gap: 8px;
+	align-items: center;
 }
 
 .reason {
