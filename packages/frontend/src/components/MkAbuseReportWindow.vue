@@ -39,7 +39,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 </template>
 
 <script setup lang="ts">
-import { ref, useTemplateRef } from 'vue';
+import { onMounted, ref, useTemplateRef } from 'vue';
 import * as Misskey from 'misskey-js';
 import MkWindow from '@/components/MkWindow.vue';
 import MkTextarea from '@/components/MkTextarea.vue';
@@ -59,7 +59,7 @@ const emit = defineEmits<{
 const uiWindow = useTemplateRef('uiWindow');
 const comment = ref(props.initialComment ?? '');
 const reasons = ref<string[]>([]);
-const abuseReportReasons = [
+const defaultAbuseReportReasons = [
 	'権利を侵害する行為、また侵害する恐れがある財産、信用、名誉、プライバシー、肖像権を侵害している',
 	'身体、生命、自由、名誉、財産などに対して害悪を加えると公開している',
 	'他者に不利益を与えている',
@@ -72,6 +72,19 @@ const abuseReportReasons = [
 	'13歳未満のユーザーにも関わらず顔写真など個人を特定できる情報を公開している',
 	'その他',
 ] as const;
+const abuseReportReasons = ref<string[]>([...defaultAbuseReportReasons]);
+
+onMounted(async () => {
+	try {
+		const configuredReasons = await os.api('users/report-abuse-reasons' as never);
+		if (Array.isArray(configuredReasons) && configuredReasons.length > 0) {
+			abuseReportReasons.value = configuredReasons as string[];
+		}
+	} catch {
+		// Keep the built-in defaults while upgrading a server that has not yet
+		// applied the migration.
+	}
+});
 
 function send() {
 	os.apiWithDialog('users/report-abuse', {

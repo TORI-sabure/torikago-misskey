@@ -633,6 +633,13 @@ export class MiMeta {
 	})
 	public recommendedTimelineSettings: Record<string, any>;
 
+	@Column('varchar', {
+		length: 512,
+		array: true,
+		default: '{}',
+	})
+	public abuseReportReasons: string[];
+
 	@Column('integer', {
 		default: 300,
 	})
