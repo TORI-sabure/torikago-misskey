@@ -48,7 +48,9 @@ type Settings = {
 const defaults: Settings = {
 	candidatePoolLimit: 3000,
 	candidateScanLimit: 300,
-	resultLimit: 100,
+	// Keep the first request deliberately small. Older entries are appended only
+	// when the reader reaches the end of the fixed snapshot.
+	resultLimit: 40,
 	snapshotHours: 24,
 	seenDays: 7,
 	seenLimit: 1000,
@@ -77,7 +79,15 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v7';
+const recommendationCacheVersion = 'v8';
+
+type RecommendationContext = {
+	followingIds: string[];
+	twoHopRows: { userId: string; socialProof: string }[];
+	reactionAffinity: Array<[string, number]>;
+	favoriteAffinity: Array<[string, number]>;
+	renoteAffinity: Array<[string, number]>;
+};
 
 export const meta = {
 	tags: ['notes'],
@@ -173,26 +183,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				}
 			}
 
-			// Older snapshots may have been created before target-note de-duplication
-			// was added. Normalize them once, including different pure renotes of the
-			// same original note, before pagination can expose a duplicate.
-			const snapshotNotes = resultIds.length === 0 ? [] : await this.notesRepository.find({ select: { id: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
-			const snapshotNoteMap = new Map(snapshotNotes.map(note => [note.id, note]));
-			const snapshotTargets = new Set<string>();
-			const normalizedResultIds = resultIds.filter(id => {
-				const target = snapshotNoteMap.get(id);
-				const targetId = target == null ? id : this.targetId(target);
-				if (snapshotTargets.has(targetId)) return false;
-				snapshotTargets.add(targetId);
-				return true;
-			});
-			if (normalizedResultIds.length !== resultIds.length) {
-				resultIds = normalizedResultIds;
-				const pipeline = this.redisClient.pipeline().del(resultKey);
-				if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
-				pipeline.expire(resultKey, settings.snapshotHours * 3600);
-				await pipeline.exec();
-			}
+			// Cache version v8 only creates snapshots after target-note de-duplication,
+			// so an extra DB pass to repair legacy snapshot lists is no longer needed.
 			const offset = ps.untilId == null ? 0 : Math.max(0, resultIds.indexOf(ps.untilId) + 1);
 			let pageIds = resultIds.slice(offset, offset + ps.limit * 8);
 			// Reaching the end of a snapshot is the only time scrolling performs more
@@ -203,7 +195,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				const existingTargets = new Set(existingNotes.map(note => this.targetId(note)));
 				const cursorKey = `${resultKey}:candidate-cursor`;
 				const cursor = Number(await this.redisClient.get(cursorKey) ?? '0');
-				const batchSize = Math.min(100, Math.max(ps.limit * 2, 30));
+			const batchSize = Math.min(60, Math.max(ps.limit * 2, 30));
 				const extraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId);
 				if (extraIds.length > 0) {
 					// Multiple widgets or Deck columns may share this snapshot. Append only
@@ -268,7 +260,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		};
 		const strings = (key: keyof Settings) => Array.isArray(raw[key]) ? raw[key].filter((x): x is string => typeof x === 'string').slice(0, 100) : defaults[key] as string[];
 		return {
-			candidatePoolLimit: integer('candidatePoolLimit', 100, 10000), candidateScanLimit: integer('candidateScanLimit', 50, 500), resultLimit: integer('resultLimit', 20, 200),
+			candidatePoolLimit: integer('candidatePoolLimit', 100, 10000), candidateScanLimit: integer('candidateScanLimit', 30, 200), resultLimit: integer('resultLimit', 20, 100),
 			snapshotHours: integer('snapshotHours', 1, 168), seenDays: integer('seenDays', 1, 30), seenLimit: integer('seenLimit', 100, 5000),
 			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
@@ -280,27 +272,19 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = ''): Promise<string[]> {
 		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + settings.candidateScanLimit - 1);
-		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
+		const context = await this.getRecommendationContext(me);
+		const followingIds = context.followingIds;
 		// Keep the Home portion faithful for the account owner as well. In particular,
 		// this lets a specified note addressed to the owner pass the normal visibility
 		// query without ever making it a shared recommendation candidate.
 		const directIds = [me.id, ...followingIds];
-		const twoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
-			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
-			.where('following.followerId IN (:...followingIds)', { followingIds }).andWhere('following.followeeId != :meId', { meId: me.id })
-			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(80).getRawMany();
+		const twoHopRows = context.twoHopRows;
 		const twoHopIds = twoHopRows.map(row => row.userId);
 		if (candidateIds.length === 0 && directIds.length === 0) return [];
 
-		const authorIds = [...new Set([...directIds, ...twoHopIds])];
-		const [reactionAffinityRows, favoriteAffinityRows, renoteAffinityRows] = authorIds.length === 0 ? [[], [], []] : await Promise.all([
-			this.noteReactionsRepository.createQueryBuilder('reaction').innerJoin('reaction.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('reaction.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
-			this.noteFavoritesRepository.createQueryBuilder('favorite').innerJoin('favorite.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('favorite.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
-			this.notesRepository.createQueryBuilder('ownRenote').innerJoin('ownRenote.renote', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('ownRenote.userId = :meId', { meId: me.id }).andWhere('ownRenote.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 90 * 86400000) }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
-		]);
-		const reactionAffinity = new Map(reactionAffinityRows.map(row => [row.userId, Number(row.count)]));
-		const favoriteAffinity = new Map(favoriteAffinityRows.map(row => [row.userId, Number(row.count)]));
-		const renoteAffinity = new Map(renoteAffinityRows.map(row => [row.userId, Number(row.count)]));
+		const reactionAffinity = new Map(context.reactionAffinity);
+		const favoriteAffinity = new Map(context.favoriteAffinity);
+		const renoteAffinity = new Map(context.renoteAffinity);
 		const directSet = new Set(directIds);
 		const twoHopProof = new Map(twoHopRows.map(row => [row.userId, Number(row.socialProof)]));
 		const createVisibleQuery = () => {
@@ -377,6 +361,40 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// they are no longer inserted as an independent chronological Home segment.
 		const regular = this.interleave(selected, settings, seed);
 		return [...forced, ...regular].slice(0, resultLimit).map(item => item.displayId);
+	}
+
+	private async getRecommendationContext(me: MiLocalUser): Promise<RecommendationContext> {
+		const key = `torikago:recommended:${recommendationCacheVersion}:context:${me.id}`;
+		const cached = await this.redisClient.get(key);
+		if (cached != null) {
+			try {
+				const context = JSON.parse(cached) as RecommendationContext;
+				if (Array.isArray(context.followingIds) && Array.isArray(context.twoHopRows) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity)) return context;
+			} catch {
+				// Rebuild a malformed or obsolete cache entry.
+			}
+		}
+
+		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
+		const twoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
+			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
+			.where('following.followerId IN (:...followingIds)', { followingIds }).andWhere('following.followeeId != :meId', { meId: me.id })
+			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(80).getRawMany();
+		const authorIds = [...new Set([me.id, ...followingIds, ...twoHopRows.map(row => row.userId)])];
+		const [reactionRows, favoriteRows, renoteRows] = authorIds.length === 0 ? [[], [], []] : await Promise.all([
+			this.noteReactionsRepository.createQueryBuilder('reaction').innerJoin('reaction.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('reaction.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
+			this.noteFavoritesRepository.createQueryBuilder('favorite').innerJoin('favorite.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('favorite.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
+			this.notesRepository.createQueryBuilder('ownRenote').innerJoin('ownRenote.renote', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('ownRenote.userId = :meId', { meId: me.id }).andWhere('ownRenote.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 90 * 86400000) }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
+		]);
+		const context: RecommendationContext = {
+			followingIds,
+			twoHopRows,
+			reactionAffinity: reactionRows.map(row => [row.userId, Number(row.count)]),
+			favoriteAffinity: favoriteRows.map(row => [row.userId, Number(row.count)]),
+			renoteAffinity: renoteRows.map(row => [row.userId, Number(row.count)]),
+		};
+		await this.redisClient.set(key, JSON.stringify(context), 'EX', 300);
+		return context;
 	}
 
 	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, seed: string): T[] {

@@ -306,7 +306,7 @@ const recommendedTimelineForcedWords = ref(((meta as typeof meta & { recommended
 const recommendedRawSettings: Record<string, unknown> = (meta as typeof meta & { recommendedTimelineSettings?: Record<string, unknown> }).recommendedTimelineSettings ?? {};
 const recommendedSettings = ref({
 	candidatePoolLimit: typeof recommendedRawSettings.candidatePoolLimit === 'number' ? recommendedRawSettings.candidatePoolLimit : 3000,
-	candidateScanLimit: typeof recommendedRawSettings.candidateScanLimit === 'number' ? recommendedRawSettings.candidateScanLimit : 300,
+	candidateScanLimit: typeof recommendedRawSettings.candidateScanLimit === 'number' ? recommendedRawSettings.candidateScanLimit : 150,
 	snapshotHours: typeof recommendedRawSettings.snapshotHours === 'number' ? recommendedRawSettings.snapshotHours : 24,
 	maxNotesPerAuthor: typeof recommendedRawSettings.maxNotesPerAuthor === 'number' ? recommendedRawSettings.maxNotesPerAuthor : 2,
 	twoHopPercent: typeof recommendedRawSettings.twoHopPercent === 'number' ? recommendedRawSettings.twoHopPercent : 60,
