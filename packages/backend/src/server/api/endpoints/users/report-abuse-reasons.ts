@@ -11,8 +11,9 @@ import { Endpoint } from '@/server/api/endpoint-base.js';
 export const meta = {
 	tags: ['users'],
 
-	requireCredential: true,
-	kind: 'read:account',
+	// The choices are shown in the report dialog itself, so this endpoint must
+	// also work for an access token that only has write:report-abuse.
+	requireCredential: false,
 
 	description: 'Show the report reasons configured by the administrator.',
 
