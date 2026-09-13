@@ -15,6 +15,7 @@ import { SystemAccountService } from '@/core/SystemAccountService.js';
 import type { Config } from '@/config.js';
 import { DI } from '@/di-symbols.js';
 import { DEFAULT_POLICIES } from '@/core/RoleService.js';
+import { getAbuseReportReasons } from '@/core/AbuseReportReasons.js';
 
 @Injectable()
 export class MetaEntityService {
@@ -77,6 +78,7 @@ export class MetaEntityService {
 			uri: this.config.url,
 			description: instance.description,
 			langs: instance.langs,
+			abuseReportReasons: getAbuseReportReasons(instance.abuseReportReasons),
 			tosUrl: instance.termsOfServiceUrl,
 			repositoryUrl: instance.repositoryUrl,
 			feedbackUrl: instance.feedbackUrl,

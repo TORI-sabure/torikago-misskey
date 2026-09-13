@@ -231,9 +231,6 @@ export const PREF_DEF = definePreferences({
 	showMutualAccountBadge: {
 		default: false,
 	},
-	includeFollowingInRecommendedTimeline: {
-		default: false,
-	},
 	enableQuickAddMfmFunction: {
 		default: false,
 	},
@@ -338,9 +335,6 @@ export const PREF_DEF = definePreferences({
 	},
 	notificationStackAxis: {
 		default: 'horizontal' as 'vertical' | 'horizontal',
-	},
-	enableCondensedLine: {
-		default: true,
 	},
 	keepScreenOn: {
 		default: false,

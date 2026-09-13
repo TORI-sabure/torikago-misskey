@@ -339,4 +339,3 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return await query.limit(ps.limit).getMany();
 	}
 }
-

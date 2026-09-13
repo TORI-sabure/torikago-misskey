@@ -346,6 +346,7 @@ export class WebhookTestService {
 			resolved: false,
 			forwarded: false,
 			comment: 'This is a dummy report for testing purposes.',
+			reasons: [],
 			targetUserHost: null,
 			reporterHost: null,
 			resolvedAs: null,

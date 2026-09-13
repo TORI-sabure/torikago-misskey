@@ -90,7 +90,6 @@ import { isSeparatorNeeded, getSeparatorInfo } from '@/utility/timeline-date-sep
 import { Paginator } from '@/utility/paginator.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
 
-const recommendedSnapshots = new Map<string, string>();
 const recommendedTexts: Record<string, { newAvailable: string }> = {
 	'en-US': { newAvailable: 'New recommendations are available' },
 	'ja-JP': { newAvailable: '新しいおすすめがあります' },
@@ -129,17 +128,10 @@ provide(DI.inChannel, computed(() => props.src === 'channel' ? props.channel ?? 
 let paginator: IPaginator<Misskey.entities.Note>;
 let skipRecommendedParameterReload = false;
 let timelineReloadPromise: Promise<void> | null = null;
-const recommendedSnapshotKey = `${$i?.id ?? 'guest'}:recommended`;
-const recommendedSnapshotSessionKey = `torikago:recommended:snapshot:${recommendedSnapshotKey}`;
-const storedRecommendedSnapshotId = window.sessionStorage.getItem(recommendedSnapshotSessionKey);
-const navigationEntry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-const reloadsBrowser = navigationEntry?.type === 'reload';
-const initialRecommendedSnapshotId = recommendedSnapshots.get(recommendedSnapshotKey) ?? (reloadsBrowser ? null : storedRecommendedSnapshotId) ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const initialRecommendedSnapshotId = props.src === 'recommended'
+	? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+	: '';
 const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
-const previousRecommendedSnapshotId = ref(reloadsBrowser ? storedRecommendedSnapshotId : null);
-const previousRecommendedIncludeFollowing = ref(prefer.r.includeFollowingInRecommendedTimeline.value);
-recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
-window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
 const recommendedRefreshAvailable = ref(false);
 
 if (props.src === 'antenna') {
@@ -170,9 +162,7 @@ if (props.src === 'antenna') {
 	paginator = markRaw(new Paginator('notes/recommended-timeline', {
 		computedParams: computed(() => ({
 			snapshotId: recommendedSnapshotId.value,
-			previousSnapshotId: previousRecommendedSnapshotId.value ?? undefined,
-			previousIncludeFollowing: previousRecommendedIncludeFollowing.value,
-			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+			includeFollowing: true,
 			withFiles: props.onlyFiles ? true : undefined,
 			withSensitive: props.withSensitive,
 		})),
@@ -335,7 +325,7 @@ if (props.src === 'recommended') {
 	useInterval(async () => {
 		const result = await misskeyApi('notes/recommended-timeline-has-new', {
 			snapshotId: recommendedSnapshotId.value,
-			includeFollowing: prefer.r.includeFollowingInRecommendedTimeline.value,
+			includeFollowing: true,
 		});
 		recommendedRefreshAvailable.value = result.hasNew;
 	}, 60_000, {
@@ -485,7 +475,7 @@ if (store.s.realtimeMode) {
 	connectChannel();
 }
 
-watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes, prefer.r.includeFollowingInRecommendedTimeline.value], () => {
+watch(() => [props.list, props.antenna, props.channel, props.role, props.withRenotes], () => {
 	if (store.s.realtimeMode) {
 		disconnectChannel();
 		connectChannel();
@@ -507,11 +497,7 @@ function reloadTimeline() {
 			// that must own the transition, otherwise two responses append the same
 			// notes to the paginator.
 			skipRecommendedParameterReload = true;
-			previousRecommendedSnapshotId.value = recommendedSnapshotId.value;
-			previousRecommendedIncludeFollowing.value = prefer.r.includeFollowingInRecommendedTimeline.value;
 			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-			recommendedSnapshots.set(recommendedSnapshotKey, recommendedSnapshotId.value);
-			window.sessionStorage.setItem(recommendedSnapshotSessionKey, recommendedSnapshotId.value);
 			recommendedRefreshAvailable.value = false;
 		}
 

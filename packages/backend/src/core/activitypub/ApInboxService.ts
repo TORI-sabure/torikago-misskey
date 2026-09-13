@@ -574,6 +574,7 @@ export class ApInboxService {
 			reporterId: actor.id,
 			reporterHost: actor.host,
 			comment: `${activity.content}\n${JSON.stringify(uris, null, 2)}`,
+			reasons: [],
 		}]);
 
 		return 'ok';
