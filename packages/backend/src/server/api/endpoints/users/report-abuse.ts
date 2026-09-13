@@ -55,7 +55,7 @@ export const paramDef = {
 		comment: { type: 'string', minLength: 1, maxLength: 2048 },
 		reasons: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 512 } },
 	},
-	required: ['userId', 'comment', 'reasons'],
+	required: ['userId', 'comment'],
 } as const;
 
 @Injectable()
@@ -68,9 +68,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		private abuseReportService: AbuseReportService,
 	) {
 		super(meta, paramDef, async (ps, me) => {
+			const reasons = ps.reasons ?? [];
 			const instanceMeta = await this.metaService.fetch(true);
 			const activeReasons = getAbuseReportReasons(instanceMeta.abuseReportReasons);
-			if (ps.reasons.some(reason => !activeReasons.includes(reason))) {
+			if (reasons.some(reason => !activeReasons.includes(reason))) {
 				throw new ApiError(meta.errors.invalidReason);
 			}
 			// Lookup user
@@ -93,7 +94,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				reporterId: me.id,
 				reporterHost: null,
 				comment: ps.comment,
-				reasons: ps.reasons,
+				reasons,
 			}]);
 		});
 	}
