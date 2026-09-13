@@ -5588,6 +5588,7 @@ export type components = {
             uri: string;
             description: string | null;
             langs: string[];
+            abuseReportReasons: string[];
             tosUrl: string | null;
             /** @default https://github.com/misskey-dev/misskey */
             repositoryUrl: string | null;
@@ -9825,6 +9826,7 @@ export interface operations {
                         recommendedTimelineAllowedUserIds: string[];
                         recommendedTimelineForcedWords: string[];
                         recommendedTimelineSettings: Record<string, never>;
+                        abuseReportReasons: string[];
                         perLocalUserUserTimelineCacheMax: number;
                         perRemoteUserUserTimelineCacheMax: number;
                         perUserHomeTimelineCacheMax: number;
@@ -13373,6 +13375,7 @@ export interface operations {
                     recommendedTimelineAllowedUserIds?: string[];
                     recommendedTimelineForcedWords?: string[];
                     recommendedTimelineSettings?: Record<string, never>;
+                    abuseReportReasons?: string[];
                     perLocalUserUserTimelineCacheMax?: number;
                     perRemoteUserUserTimelineCacheMax?: number;
                     perUserHomeTimelineCacheMax?: number;
@@ -37654,6 +37657,7 @@ export interface operations {
                     /** Format: misskey:id */
                     userId: string;
                     comment: string;
+                    reasons: string[];
                 };
             };
         };
