@@ -81,7 +81,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v10';
+const recommendationCacheVersion = 'v11';
 
 type RecommendationContext = {
 	followingIds: string[];
@@ -391,7 +391,25 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// They must remain available for the configured following-source share.
 		const eligible = uniqueScored.filter(item => item.forced || item.source === 'following' || item.quality >= settings.minimumScore);
 		const selectionSettings = resultLimit === settings.resultLimit ? settings : { ...settings, resultLimit };
-		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed);
+		let selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed);
+		// Source selection normally honours the configured ratios, but a depleted
+		// source can fall back to another list while iterating. Do not let that
+		// fallback erase the followed-account share when visible Home/followers
+		// notes actually exist for the reader.
+		const wantedFollowing = sourceTarget(settings.followingPercent);
+		const selectedFollowing = selected.filter(item => item.source === 'following').length;
+		if (selectedFollowing < wantedFollowing) {
+			const selectedTargets = new Set(selected.map(item => item.targetId));
+			const replacements = eligible
+				.filter(item => item.source === 'following' && !item.forced && !forcedTargets.has(item.targetId) && !selectedTargets.has(item.targetId))
+				.sort((a, b) => b.quality - a.quality)
+				.slice(0, wantedFollowing - selectedFollowing);
+			for (const replacement of replacements) {
+				const replaceAt = selected.map(item => item.source === 'unknown' || item.source === 'twoHop').lastIndexOf(true);
+				if (replaceAt < 0) break;
+				selected[replaceAt] = replacement;
+			}
+		}
 		// Home-eligible notes are scored and interleaved with every other source;
 		// they are no longer inserted as an independent chronological Home segment.
 		const regular = this.interleave(selected, settings, seed);
