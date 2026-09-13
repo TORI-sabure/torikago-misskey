@@ -37657,7 +37657,7 @@ export interface operations {
                     /** Format: misskey:id */
                     userId: string;
                     comment: string;
-                    reasons: string[];
+                    reasons?: string[];
                 };
             };
         };
