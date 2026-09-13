@@ -37,6 +37,7 @@ type Settings = {
 	botPenalty: number;
 	twoHopRenoteBonus: number;
 	negativePenalty: number;
+	reducedAccountPenalty: number;
 	minimumScore: number;
 	fallbackMaxAgeDays: number;
 	forcedLimit: number;
@@ -70,6 +71,7 @@ const defaults: Settings = {
 	botPenalty: 3,
 	twoHopRenoteBonus: 6,
 	negativePenalty: 8,
+	reducedAccountPenalty: 12,
 	minimumScore: 0,
 	fallbackMaxAgeDays: 90,
 	forcedLimit: 3,
@@ -268,7 +270,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
 			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
-			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
+			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), reducedAccountPenalty: integer('reducedAccountPenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
 			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
 	}
@@ -378,7 +380,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// A pure renote is a recommendation signal; show its public original
 			// directly so the reader does not see a redundant renote wrapper.
 			const displayId = plainRenote ? note.renoteId! : note.id;
-			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + settings.reactionBonus * Math.log1p(reactions) + 1.5 * Math.log1p(rankingNote.renoteCount) + (rankingNote.visibility === 'public' ? settings.publicBonus : 0) + (rankingNote.user?.host == null ? settings.localUserBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) + (boosted ? settings.boostBonus : 0) - (rankingNote.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (rankingNote.user?.isBot ? settings.botPenalty : 0) - (negative ? settings.negativePenalty : 0) - (reducedUserIds.has(rankingNote.userId) ? 12 : 0);
+			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + settings.reactionBonus * Math.log1p(reactions) + 1.5 * Math.log1p(rankingNote.renoteCount) + (rankingNote.visibility === 'public' ? settings.publicBonus : 0) + (rankingNote.user?.host == null ? settings.localUserBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) + (boosted ? settings.boostBonus : 0) - (rankingNote.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (rankingNote.user?.isBot ? settings.botPenalty : 0) - (negative ? settings.negativePenalty : 0) - (reducedUserIds.has(rankingNote.userId) ? settings.reducedAccountPenalty : 0);
 			return [{ id: note.id, displayId, targetId: this.targetId(note), authorId: rankingNote.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 }];
 		});
 		// A plain renote and its original note represent one thing to the reader.
