@@ -8,6 +8,21 @@ SPDX-License-Identifier: AGPL-3.0-only
 	<div class="_spacer" style="--MI_SPACER-w: 700px; --MI_SPACER-min: 16px; --MI_SPACER-max: 32px;">
 		<SearchMarker path="/admin/moderation" :label="i18n.ts.moderation" :keywords="['moderation']" icon="ti ti-shield" :inlining="['serverRules']">
 			<div class="_gaps_m">
+				<SearchMarker :keywords="['report', 'abuse', 'reason', '通報', '理由']">
+					<MkFolder>
+						<template #label><SearchLabel>{{ abuseReportReasonsAdminText.label }}</SearchLabel></template>
+						<div class="_gaps_s">
+							<div>{{ abuseReportReasonsAdminText.caption }}</div>
+							<div v-for="(_reason, index) in abuseReportReasons" :key="index" style="display: flex; gap: 8px; align-items: center;">
+								<MkInput v-model="abuseReportReasons[index]" style="flex: 1;"/>
+								<MkButton danger inline @click="removeAbuseReportReason(index)"><i class="ti ti-x"></i></MkButton>
+							</div>
+							<MkButton @click="addAbuseReportReason"><i class="ti ti-plus"></i> {{ i18n.ts.add }}</MkButton>
+							<MkButton primary :disabled="normalizedAbuseReportReasons.length === 0" @click="saveAbuseReportReasons">{{ i18n.ts.save }}</MkButton>
+						</div>
+					</MkFolder>
+				</SearchMarker>
+
 				<SearchMarker :keywords="['recommended', 'timeline', 'おすすめ', 'タイムライン']">
 					<MkSwitch v-model="enableRecommendedTimeline" @change="onChange_enableRecommendedTimeline">
 						<template #label><SearchLabel>{{ recommendedTimelineAdminText.label }}</SearchLabel></template>
@@ -45,6 +60,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<MkInput v-model.number="recommendedSettings.candidatePoolLimit" type="number"><template #label>{{ recommendedTimelineAdminText.candidatePoolLimit }}</template></MkInput>
 								<MkInput v-model.number="recommendedSettings.candidateScanLimit" type="number"><template #label>{{ recommendedTimelineAdminText.candidateScanLimit }}</template></MkInput>
 								<MkInput v-model.number="recommendedSettings.snapshotHours" type="number"><template #label>{{ recommendedTimelineAdminText.snapshotHours }}</template></MkInput>
+								<MkInput v-model.number="recommendedSettings.fallbackMaxAgeDays" type="number"><template #label>{{ recommendedTimelineAdminText.fallbackMaxAgeDays }}</template></MkInput>
 								<MkInput v-model.number="recommendedSettings.maxNotesPerAuthor" type="number"><template #label>{{ recommendedTimelineAdminText.maxNotesPerAuthor }}</template></MkInput>
 							</div>
 							<div class="_gaps_s">
@@ -67,6 +83,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<MkInput v-model.number="recommendedSettings.sensitivePenalty" type="number"><template #label>{{ recommendedTimelineAdminText.sensitivePenalty }}</template></MkInput>
 								<MkInput v-model.number="recommendedSettings.botPenalty" type="number"><template #label>{{ recommendedTimelineAdminText.botPenalty }}</template></MkInput>
 								<MkInput v-model.number="recommendedSettings.negativePenalty" type="number"><template #label>{{ recommendedTimelineAdminText.negativePenalty }}</template></MkInput>
+								<MkInput v-model.number="recommendedSettings.minimumScore" type="number"><template #label>{{ recommendedTimelineAdminText.minimumScore }}</template></MkInput>
 							</div>
 							<MkTextarea v-model="recommendedForcedAccounts"><template #label>{{ recommendedTimelineAdminText.forcedAccounts }}</template><template #caption>{{ recommendedTimelineAdminText.accountCaption }}</template></MkTextarea>
 							<MkTextarea v-model="recommendedBoostWords"><template #label>{{ recommendedTimelineAdminText.boostWords }}</template></MkTextarea>
@@ -263,6 +280,26 @@ const preservedUsernames = ref(meta.preservedUsernames.join('\n'));
 const blockedHosts = ref(meta.blockedHosts.join('\n'));
 const silencedHosts = ref(meta.silencedHosts?.join('\n') ?? '');
 const mediaSilencedHosts = ref(meta.mediaSilencedHosts.join('\n'));
+const abuseReportReasons = ref([...(meta as typeof meta & { abuseReportReasons?: string[] }).abuseReportReasons ?? []]);
+const normalizedAbuseReportReasons = computed(() => [...new Set(abuseReportReasons.value.map(reason => reason.trim()).filter(Boolean))]);
+const abuseReportReasonsAdminText = {
+	label: ({
+		'en-US': 'Report reasons',
+		'ja-JP': '通報理由',
+		'ja-KS': '通報理由',
+		'ko-KR': '신고 사유',
+		'zh-CN': '举报理由',
+		'zh-TW': '檢舉理由',
+	} as Record<string, string>)[window.document.documentElement.lang] ?? 'Report reasons',
+	caption: ({
+		'en-US': 'Reasons that users can select when sending a report. Add, edit, or remove items, then save.',
+		'ja-JP': '通報時に選択できる理由です。追加・編集・削除後に保存してください。',
+		'ja-KS': '通報するときに選べる理由や。追加・編集・削除したら保存してな。',
+		'ko-KR': '사용자가 신고할 때 선택할 수 있는 사유입니다. 추가, 수정 또는 삭제한 뒤 저장하세요.',
+		'zh-CN': '用户举报时可选择的理由。添加、编辑或删除后请保存。',
+		'zh-TW': '使用者檢舉時可選擇的理由。新增、編輯或刪除後請儲存。',
+	} as Record<string, string>)[window.document.documentElement.lang] ?? 'Reasons that users can select when sending a report. Add, edit, or remove items, then save.',
+};
 const enableRecommendedTimeline = ref((meta as typeof meta & { enableRecommendedTimeline?: boolean }).enableRecommendedTimeline ?? false);
 const collectRecommendedTimelineNotes = ref((meta as typeof meta & { collectRecommendedTimelineNotes?: boolean }).collectRecommendedTimelineNotes ?? false);
 const recommendedTimelineAllowedUserIds = ref([...(meta as typeof meta & { recommendedTimelineAllowedUserIds?: string[] }).recommendedTimelineAllowedUserIds ?? []]);
@@ -270,8 +307,9 @@ const recommendedTimelineForcedWords = ref(((meta as typeof meta & { recommended
 const recommendedRawSettings: Record<string, unknown> = (meta as typeof meta & { recommendedTimelineSettings?: Record<string, unknown> }).recommendedTimelineSettings ?? {};
 const recommendedSettings = ref({
 	candidatePoolLimit: typeof recommendedRawSettings.candidatePoolLimit === 'number' ? recommendedRawSettings.candidatePoolLimit : 3000,
-	candidateScanLimit: typeof recommendedRawSettings.candidateScanLimit === 'number' ? recommendedRawSettings.candidateScanLimit : 300,
+	candidateScanLimit: typeof recommendedRawSettings.candidateScanLimit === 'number' ? recommendedRawSettings.candidateScanLimit : 150,
 	snapshotHours: typeof recommendedRawSettings.snapshotHours === 'number' ? recommendedRawSettings.snapshotHours : 24,
+	fallbackMaxAgeDays: typeof recommendedRawSettings.fallbackMaxAgeDays === 'number' ? recommendedRawSettings.fallbackMaxAgeDays : 90,
 	maxNotesPerAuthor: typeof recommendedRawSettings.maxNotesPerAuthor === 'number' ? recommendedRawSettings.maxNotesPerAuthor : 2,
 	twoHopPercent: typeof recommendedRawSettings.twoHopPercent === 'number' ? recommendedRawSettings.twoHopPercent : 60,
 	followingPercent: typeof recommendedRawSettings.followingPercent === 'number' ? recommendedRawSettings.followingPercent : 20,
@@ -288,14 +326,15 @@ const recommendedSettings = ref({
 	sensitivePenalty: typeof recommendedRawSettings.sensitivePenalty === 'number' ? recommendedRawSettings.sensitivePenalty : 6,
 	botPenalty: typeof recommendedRawSettings.botPenalty === 'number' ? recommendedRawSettings.botPenalty : 3,
 	negativePenalty: typeof recommendedRawSettings.negativePenalty === 'number' ? recommendedRawSettings.negativePenalty : 8,
+	minimumScore: typeof recommendedRawSettings.minimumScore === 'number' ? recommendedRawSettings.minimumScore : 0,
 });
 const recommendedForcedAccounts = ref(Array.isArray(recommendedRawSettings.forcedAccounts) ? recommendedRawSettings.forcedAccounts.join('\n') : '');
 const recommendedBoostWords = ref(Array.isArray(recommendedRawSettings.boostWords) ? recommendedRawSettings.boostWords.join('\n') : '');
 const recommendedNegativeWords = ref(Array.isArray(recommendedRawSettings.negativeWords) ? recommendedRawSettings.negativeWords.join('\n') : '');
 const recommendedNegativeAccounts = ref(Array.isArray(recommendedRawSettings.negativeAccounts) ? recommendedRawSettings.negativeAccounts.join('\n') : '');
-type RecommendedAdminText = { label: string; caption: string; collectLabel: string; collectCaption: string; allowedUsers: string; allowedUsersCaption: string; forcedWords: string; forcedWordsCaption: string; advanced: string; candidatePoolLimit: string; candidateScanLimit: string; snapshotHours: string; maxNotesPerAuthor: string; twoHopPercent: string; followingPercent: string; unknownPercent: string; qualityPercent: string; balancedPercent: string; freshPercent: string; forcedLimit: string; publicBonus: string; localUserBonus: string; reactionBonus: string; boostBonus: string; twoHopRenoteBonus: string; sensitivePenalty: string; botPenalty: string; negativePenalty: string; forcedAccounts: string; boostWords: string; negativeWords: string; negativeAccounts: string; accountCaption: string };
+type RecommendedAdminText = { label: string; caption: string; collectLabel: string; collectCaption: string; allowedUsers: string; allowedUsersCaption: string; forcedWords: string; forcedWordsCaption: string; advanced: string; candidatePoolLimit: string; candidateScanLimit: string; snapshotHours: string; fallbackMaxAgeDays: string; maxNotesPerAuthor: string; twoHopPercent: string; followingPercent: string; unknownPercent: string; qualityPercent: string; balancedPercent: string; freshPercent: string; forcedLimit: string; publicBonus: string; localUserBonus: string; reactionBonus: string; boostBonus: string; twoHopRenoteBonus: string; sensitivePenalty: string; botPenalty: string; negativePenalty: string; minimumScore: string; forcedAccounts: string; boostWords: string; negativeWords: string; negativeAccounts: string; accountCaption: string };
 const recommendedAdminDefaultText: RecommendedAdminText = {
-	label: 'Enable recommended timeline', caption: 'Controls whether users can open the recommended timeline.', collectLabel: 'Collect notes for recommendations', collectCaption: 'Collects candidates while the timeline is hidden.', allowedUsers: 'Recommended timeline test users', allowedUsersCaption: 'When one or more users are listed, only they can open the recommended timeline. Leave the list empty to allow everyone.', forcedWords: 'Always-recommend words', forcedWordsCaption: 'One plain-text word per line. Visibility, mute, and block rules are never bypassed.', advanced: 'Recommendation settings', candidatePoolLimit: 'Candidate pool size', candidateScanLimit: 'Candidates checked per generation', snapshotHours: 'Snapshot retention (hours)', maxNotesPerAuthor: 'Maximum notes per author', twoHopPercent: 'Two-hop accounts (%)', followingPercent: 'Followed accounts (%)', unknownPercent: 'Unrelated accounts (%)', qualityPercent: 'High-quality slots (%)', balancedPercent: 'Balanced slots (%)', freshPercent: 'Fresh slots (%)', forcedLimit: 'Maximum forced slots', publicBonus: 'Public note bonus', localUserBonus: 'Local account bonus', reactionBonus: 'Reaction bonus', boostBonus: 'Boost-word bonus', twoHopRenoteBonus: 'Two-hop public renote bonus', sensitivePenalty: 'Sensitive file penalty', botPenalty: 'Bot account penalty', negativePenalty: 'Negative rule penalty', forcedAccounts: 'Always-recommend accounts', boostWords: 'Boost words', negativeWords: 'Negative words', negativeAccounts: 'Negative accounts', accountCaption: 'One account per line: @username or @username@server.example.',
+	label: 'Enable recommended timeline', caption: 'Controls whether users can open the recommended timeline.', collectLabel: 'Collect notes for recommendations', collectCaption: 'Collects candidates while the timeline is hidden.', allowedUsers: 'Recommended timeline test users', allowedUsersCaption: 'When one or more users are listed, only they can open the recommended timeline. Leave the list empty to allow everyone.', forcedWords: 'Always-recommend words', forcedWordsCaption: 'One plain-text word per line. Visibility, mute, and block rules are never bypassed.', advanced: 'Recommendation settings', candidatePoolLimit: 'Candidate pool size', candidateScanLimit: 'Candidates checked per generation', snapshotHours: 'Snapshot retention (hours)', fallbackMaxAgeDays: 'Maximum fallback age (days)', maxNotesPerAuthor: 'Maximum notes per author', twoHopPercent: 'Two-hop accounts (%)', followingPercent: 'Followed accounts (%)', unknownPercent: 'Unrelated accounts (%)', qualityPercent: 'High-quality slots (%)', balancedPercent: 'Balanced slots (%)', freshPercent: 'Fresh slots (%)', forcedLimit: 'Maximum forced slots', publicBonus: 'Public note bonus', localUserBonus: 'Local account bonus', reactionBonus: 'Reaction bonus', boostBonus: 'Boost-word bonus', twoHopRenoteBonus: 'Two-hop public renote bonus', sensitivePenalty: 'Sensitive file penalty', botPenalty: 'Bot account penalty', negativePenalty: 'Negative rule penalty', minimumScore: 'Minimum recommendation score', forcedAccounts: 'Always-recommend accounts', boostWords: 'Boost words', negativeWords: 'Negative words', negativeAccounts: 'Negative accounts', accountCaption: 'One account per line: @username or @username@server.example.',
 };
 const recommendedTimelineAdminTexts: Record<string, Partial<RecommendedAdminText>> = {
 	'en-US': { label: 'Enable recommended timeline', caption: 'Controls whether users can open the recommended timeline.', collectLabel: 'Collect notes for recommendations', collectCaption: 'Collects candidates even while the timeline is hidden, so it can be prepared before launch. Public notes and home notes with hashtags are eligible.', forcedWords: 'Always-recommend words', forcedWordsCaption: 'One plain-text word per line. Visibility, mute, and block rules are never bypassed.' },
@@ -317,6 +356,16 @@ Object.assign(recommendedTimelineAdminTexts['ja-KS']!, { reactionBonus: 'ツッ�
 Object.assign(recommendedTimelineAdminTexts['ko-KR']!, { reactionBonus: '리액션 수 가점' });
 Object.assign(recommendedTimelineAdminTexts['zh-CN']!, { reactionBonus: '回应数量加分值' });
 Object.assign(recommendedTimelineAdminTexts['zh-TW']!, { reactionBonus: '回應數量加分值' });
+Object.assign(recommendedTimelineAdminTexts['ja-JP']!, { minimumScore: 'おすすめに表示する最低スコア' });
+Object.assign(recommendedTimelineAdminTexts['ja-KS']!, { minimumScore: 'おすすめに出す最低スコア' });
+Object.assign(recommendedTimelineAdminTexts['ko-KR']!, { minimumScore: '추천에 표시할 최소 점수' });
+Object.assign(recommendedTimelineAdminTexts['zh-CN']!, { minimumScore: '推荐显示的最低分数' });
+Object.assign(recommendedTimelineAdminTexts['zh-TW']!, { minimumScore: '推薦顯示的最低分數' });
+Object.assign(recommendedTimelineAdminTexts['ja-JP']!, { fallbackMaxAgeDays: '候補不足時に遡る最大日数' });
+Object.assign(recommendedTimelineAdminTexts['ja-KS']!, { fallbackMaxAgeDays: '候補が足りん時にさかのぼる最大日数' });
+Object.assign(recommendedTimelineAdminTexts['ko-KR']!, { fallbackMaxAgeDays: '후보 부족 시 조회할 최대 일수' });
+Object.assign(recommendedTimelineAdminTexts['zh-CN']!, { fallbackMaxAgeDays: '候选不足时追溯的最长天数' });
+Object.assign(recommendedTimelineAdminTexts['zh-TW']!, { fallbackMaxAgeDays: '候選不足時回溯的最長天數' });
 Object.assign(recommendedTimelineAdminTexts['ja-JP']!, { botPenalty: 'Botアカウントの減点量' });
 Object.assign(recommendedTimelineAdminTexts['ja-KS']!, { botPenalty: 'Botアカウントの減点量' });
 Object.assign(recommendedTimelineAdminTexts['ko-KR']!, { botPenalty: '봇 계정 감점' });
@@ -328,6 +377,26 @@ Object.assign(recommendedTimelineAdminTexts['ko-KR']!, { localUserBonus: '로컬
 Object.assign(recommendedTimelineAdminTexts['zh-CN']!, { localUserBonus: '本地账号帖子加分值' });
 Object.assign(recommendedTimelineAdminTexts['zh-TW']!, { localUserBonus: '本地帳號貼文加分值' });
 const recommendedTimelineAdminText: RecommendedAdminText = { ...recommendedAdminDefaultText, ...(recommendedTimelineAdminTexts[window.document.documentElement.lang] ?? {}) };
+
+function addAbuseReportReason() {
+	abuseReportReasons.value.push('');
+}
+
+function removeAbuseReportReason(index: number) {
+	abuseReportReasons.value.splice(index, 1);
+}
+
+function saveAbuseReportReasons() {
+	if (normalizedAbuseReportReasons.value.length === 0) {
+		os.alert({ type: 'error', text: window.document.documentElement.lang === 'ja-JP' || window.document.documentElement.lang === 'ja-KS' ? '通報理由は1件以上登録してください。' : 'Register at least one report reason.' });
+		return;
+	}
+
+	abuseReportReasons.value = normalizedAbuseReportReasons.value;
+	os.apiWithDialog('admin/update-meta', {
+		abuseReportReasons: abuseReportReasons.value,
+	} as never).then(() => fetchInstance(true));
+}
 
 async function onChange_enableRegistration(value: boolean) {
 	if (value) {

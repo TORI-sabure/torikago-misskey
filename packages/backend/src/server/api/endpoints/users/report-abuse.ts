@@ -8,6 +8,8 @@ import { Endpoint } from '@/server/api/endpoint-base.js';
 import { GetterService } from '@/server/api/GetterService.js';
 import { RoleService } from '@/core/RoleService.js';
 import { AbuseReportService } from '@/core/AbuseReportService.js';
+import { getAbuseReportReasons } from '@/core/AbuseReportReasons.js';
+import { MetaService } from '@/core/MetaService.js';
 import { ApiError } from '../../error.js';
 
 export const meta = {
@@ -36,6 +38,13 @@ export const meta = {
 			code: 'CANNOT_REPORT_THE_ADMIN',
 			id: '35e166f5-05fb-4f87-a2d5-adb42676d48f',
 		},
+
+		invalidReason: {
+			message: 'One or more report reasons are no longer available.',
+			code: 'INVALID_REPORT_REASON',
+			id: 'c827501f-5376-46da-a1c9-18d1d593cdca',
+		},
+
 	},
 } as const;
 
@@ -44,6 +53,7 @@ export const paramDef = {
 	properties: {
 		userId: { type: 'string', format: 'misskey:id' },
 		comment: { type: 'string', minLength: 1, maxLength: 2048 },
+		reasons: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 512 } },
 	},
 	required: ['userId', 'comment'],
 } as const;
@@ -51,11 +61,19 @@ export const paramDef = {
 @Injectable()
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export
 	constructor(
+		private metaService: MetaService,
+
 		private getterService: GetterService,
 		private roleService: RoleService,
 		private abuseReportService: AbuseReportService,
 	) {
 		super(meta, paramDef, async (ps, me) => {
+			const reasons = ps.reasons ?? [];
+			const instanceMeta = await this.metaService.fetch(true);
+			const activeReasons = getAbuseReportReasons(instanceMeta.abuseReportReasons);
+			if (reasons.some(reason => !activeReasons.includes(reason))) {
+				throw new ApiError(meta.errors.invalidReason);
+			}
 			// Lookup user
 			const targetUser = await this.getterService.getUser(ps.userId).catch(err => {
 				if (err.id === '15348ddd-432d-49c2-8a5a-8069753becff') throw new ApiError(meta.errors.noSuchUser);
@@ -76,6 +94,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				reporterId: me.id,
 				reporterHost: null,
 				comment: ps.comment,
+				reasons,
 			}]);
 		});
 	}

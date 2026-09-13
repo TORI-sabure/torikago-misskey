@@ -37,6 +37,8 @@ type Settings = {
 	botPenalty: number;
 	twoHopRenoteBonus: number;
 	negativePenalty: number;
+	minimumScore: number;
+	fallbackMaxAgeDays: number;
 	forcedLimit: number;
 	forcedAccounts: string[];
 	negativeWords: string[];
@@ -47,7 +49,9 @@ type Settings = {
 const defaults: Settings = {
 	candidatePoolLimit: 3000,
 	candidateScanLimit: 300,
-	resultLimit: 100,
+	// Keep the first request deliberately small. Older entries are appended only
+	// when the reader reaches the end of the fixed snapshot.
+	resultLimit: 40,
 	snapshotHours: 24,
 	seenDays: 7,
 	seenLimit: 1000,
@@ -66,6 +70,8 @@ const defaults: Settings = {
 	botPenalty: 3,
 	twoHopRenoteBonus: 6,
 	negativePenalty: 8,
+	minimumScore: 0,
+	fallbackMaxAgeDays: 90,
 	forcedLimit: 3,
 	forcedAccounts: [],
 	negativeWords: [],
@@ -75,7 +81,15 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v7';
+const recommendationCacheVersion = 'v11';
+
+type RecommendationContext = {
+	followingIds: string[];
+	twoHopRows: { userId: string; socialProof: string }[];
+	reactionAffinity: Array<[string, number]>;
+	favoriteAffinity: Array<[string, number]>;
+	renoteAffinity: Array<[string, number]>;
+};
 
 export const meta = {
 	tags: ['notes'],
@@ -134,14 +148,17 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const allowedUserIds = this.serverSettings.recommendedTimelineAllowedUserIds ?? [];
 			if (allowedUserIds.length > 0 && !allowedUserIds.includes(me.id)) throw new ApiError(meta.errors.notAllowed);
 			const settings = this.settings();
-			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:${ps.includeFollowing ? 'home' : 'discovery'}`;
+			// Home-eligible notes are always scored as recommendation candidates. Keep
+			// accepting the former request parameters for older clients, but never let
+			// them create a separate discovery-only result set.
+			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:home`;
 			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 			if (resultIds.length === 0) {
 				// The host has a known midnight load spike. Do not make a reader wait
 				// for a fresh ranking if the browser already has a usable snapshot:
 				// carry that fixed snapshot forward instead. Returning an empty array
 				// here used to render "No notes" for every reader during the protected window.
-				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:${ps.previousIncludeFollowing ? 'home' : 'discovery'}`;
+				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:home`;
 				const previousResultIds = previousResultKey == null ? [] : await this.redisClient.lrange(previousResultKey, 0, -1);
 				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousResultIds.length > 0) {
 					const previousSeenIds = await this.redisClient.smembers(`${previousResultKey}:seen`);
@@ -158,7 +175,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					// A first-time reader has no snapshot to reuse. Generate one rather
 					// than presenting an empty timeline; this is request-driven, not a
 					// midnight-wide background job.
-					resultIds = await this.buildRecommendation(me, ps.includeFollowing, settings, new Set(), 0, settings.resultLimit, ps.snapshotId);
+					resultIds = await this.buildRecommendation(me, settings, new Set(), 0, settings.resultLimit, ps.snapshotId);
 					const pipeline = this.redisClient.pipeline().del(resultKey);
 					if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
 					pipeline.expire(resultKey, settings.snapshotHours * 3600);
@@ -168,26 +185,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				}
 			}
 
-			// Older snapshots may have been created before target-note de-duplication
-			// was added. Normalize them once, including different pure renotes of the
-			// same original note, before pagination can expose a duplicate.
-			const snapshotNotes = resultIds.length === 0 ? [] : await this.notesRepository.find({ select: { id: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
-			const snapshotNoteMap = new Map(snapshotNotes.map(note => [note.id, note]));
-			const snapshotTargets = new Set<string>();
-			const normalizedResultIds = resultIds.filter(id => {
-				const target = snapshotNoteMap.get(id);
-				const targetId = target == null ? id : this.targetId(target);
-				if (snapshotTargets.has(targetId)) return false;
-				snapshotTargets.add(targetId);
-				return true;
-			});
-			if (normalizedResultIds.length !== resultIds.length) {
-				resultIds = normalizedResultIds;
-				const pipeline = this.redisClient.pipeline().del(resultKey);
-				if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
-				pipeline.expire(resultKey, settings.snapshotHours * 3600);
-				await pipeline.exec();
-			}
+			// Cache version v8 only creates snapshots after target-note de-duplication,
+			// so an extra DB pass to repair legacy snapshot lists is no longer needed.
 			const offset = ps.untilId == null ? 0 : Math.max(0, resultIds.indexOf(ps.untilId) + 1);
 			let pageIds = resultIds.slice(offset, offset + ps.limit * 8);
 			// Reaching the end of a snapshot is the only time scrolling performs more
@@ -198,8 +197,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				const existingTargets = new Set(existingNotes.map(note => this.targetId(note)));
 				const cursorKey = `${resultKey}:candidate-cursor`;
 				const cursor = Number(await this.redisClient.get(cursorKey) ?? '0');
-				const batchSize = Math.min(100, Math.max(ps.limit * 2, 30));
-				const extraIds = await this.buildRecommendation(me, ps.includeFollowing, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId);
+			const batchSize = Math.min(60, Math.max(ps.limit * 2, 30));
+				const extraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId);
 				if (extraIds.length > 0) {
 					// Multiple widgets or Deck columns may share this snapshot. Append only
 					// when its length is unchanged, so concurrent end-of-list requests can
@@ -263,44 +262,33 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		};
 		const strings = (key: keyof Settings) => Array.isArray(raw[key]) ? raw[key].filter((x): x is string => typeof x === 'string').slice(0, 100) : defaults[key] as string[];
 		return {
-			candidatePoolLimit: integer('candidatePoolLimit', 100, 10000), candidateScanLimit: integer('candidateScanLimit', 50, 500), resultLimit: integer('resultLimit', 20, 200),
+			candidatePoolLimit: integer('candidatePoolLimit', 100, 10000), candidateScanLimit: integer('candidateScanLimit', 30, 200), resultLimit: integer('resultLimit', 20, 100),
 			snapshotHours: integer('snapshotHours', 1, 168), seenDays: integer('seenDays', 1, 30), seenLimit: integer('seenLimit', 100, 5000),
 			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
 			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
-			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), forcedLimit: integer('forcedLimit', 0, 20),
+			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
 			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
 	}
 
-	private async buildRecommendation(me: MiLocalUser, includeFollowing: boolean, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = ''): Promise<string[]> {
+	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = ''): Promise<string[]> {
 		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + settings.candidateScanLimit - 1);
-		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
-		// Keep the Home portion faithful for the account owner as well. In particular,
-		// this lets a specified note addressed to the owner pass the normal visibility
-		// query without ever making it a shared recommendation candidate.
-		const directIds = [me.id, ...followingIds];
-		const twoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
-			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
-			.where('following.followerId IN (:...followingIds)', { followingIds }).andWhere('following.followeeId != :meId', { meId: me.id })
-			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(80).getRawMany();
+		const context = await this.getRecommendationContext(me);
+		const followingIds = context.followingIds;
+		const directIds = followingIds;
+		const twoHopRows = context.twoHopRows;
 		const twoHopIds = twoHopRows.map(row => row.userId);
 		if (candidateIds.length === 0 && directIds.length === 0) return [];
 
-		const authorIds = [...new Set([...directIds, ...twoHopIds])];
-		const [reactionAffinityRows, favoriteAffinityRows, renoteAffinityRows] = authorIds.length === 0 ? [[], [], []] : await Promise.all([
-			this.noteReactionsRepository.createQueryBuilder('reaction').innerJoin('reaction.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('reaction.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
-			this.noteFavoritesRepository.createQueryBuilder('favorite').innerJoin('favorite.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('favorite.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
-			this.notesRepository.createQueryBuilder('ownRenote').innerJoin('ownRenote.renote', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('ownRenote.userId = :meId', { meId: me.id }).andWhere('ownRenote.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 90 * 86400000) }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
-		]);
-		const reactionAffinity = new Map(reactionAffinityRows.map(row => [row.userId, Number(row.count)]));
-		const favoriteAffinity = new Map(favoriteAffinityRows.map(row => [row.userId, Number(row.count)]));
-		const renoteAffinity = new Map(renoteAffinityRows.map(row => [row.userId, Number(row.count)]));
+		const reactionAffinity = new Map(context.reactionAffinity);
+		const favoriteAffinity = new Map(context.favoriteAffinity);
+		const renoteAffinity = new Map(context.renoteAffinity);
 		const directSet = new Set(directIds);
 		const twoHopProof = new Map(twoHopRows.map(row => [row.userId, Number(row.socialProof)]));
-		const createVisibleQuery = () => {
+		const createVisibleQuery = (limit = settings.candidateScanLimit) => {
 			const query = this.notesRepository.createQueryBuilder('note').innerJoinAndSelect('note.user', 'user').leftJoinAndSelect('note.reply', 'reply').leftJoinAndSelect('reply.user', 'replyUser').leftJoinAndSelect('note.renote', 'renote').leftJoinAndSelect('renote.user', 'renoteUser')
-				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(settings.candidateScanLimit);
+				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(limit);
 			this.queryService.generateVisibilityQuery(query, me);
 			this.queryService.generateBaseNoteFilteringQuery(query, me);
 			this.queryService.generateMutedUserRenotesQueryForNotes(query, me);
@@ -309,22 +297,44 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// Keep Home and discovery retrieval independent. A busy global candidate pool
 		// must not crowd out followed accounts before scoring. Followed posts remain a
 		// normal recommendation source even when the explicit Home mix is off.
-		const directQuery = createVisibleQuery().andWhere('note.userId = ANY(:directIds)', { directIds }).andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 7 * 86400000) });
-		// When the Home mix is off, followed accounts are still scored according to
-		// the configured source share. Only notes eligible for the shared candidate
-		// pool may enter through that path; private/followers-only and ordinary Home
-		// posts are Home timeline material, not recommendations.
-		if (!includeFollowing) {
-			directQuery.andWhere(`(
-				note.visibility = 'public'
-				OR (note.visibility = 'home' AND cardinality(note.tags) > 0)
-				OR (note.visibility = 'home' AND note.renoteId IS NOT NULL AND renote.visibility = 'public' AND (note.text IS NULL OR note.text = '') AND (note.cw IS NULL OR note.cw = ''))
-			)`);
-		}
-		const noteLists = await Promise.all([
+		// A bounded per-source fetch makes the result genuinely personal even when
+		// the shared Redis candidate pool is dominated by a busy relay. The cap is
+		// intentionally small: ranking needs a varied shortlist, not every note
+		// written by every followed account.
+		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
+		const fetchDirectNotes = (days: number) => directIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(sourceNoteLimit)
+			.andWhere('note.userId = ANY(:directIds)', { directIds })
+			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
+			.getMany();
+		const fetchTwoHopNotes = (days: number) => twoHopIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(sourceNoteLimit)
+			.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds })
+			.andWhere('note.visibility = \'public\'')
+			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
+			.getMany();
+		const [sharedNotes, initialDirectNotes, initialTwoHopNotes] = await Promise.all([
 			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
-			directIds.length > 0 ? directQuery.getMany() : [],
+			fetchDirectNotes(7),
+			fetchTwoHopNotes(7),
 		]);
+		let directNotes = initialDirectNotes;
+		let twoHopNotes = initialTwoHopNotes;
+		const sourceTarget = (percent: number) => {
+			const total = settings.twoHopPercent + settings.followingPercent + settings.unknownPercent;
+			return percent === 0 ? 0 : Math.max(1, Math.ceil(resultLimit * percent / Math.max(total, 1)));
+		};
+		// Most requests inspect only the recent week. When a quiet period leaves a
+		// personalised source below its configured share, widen only that source in
+		// stages. This avoids turning every recommendation request into a 90-day scan.
+		for (const days of [...new Set([30, settings.fallbackMaxAgeDays])].filter(days => days > 7)) {
+			const [olderDirect, olderTwoHop] = await Promise.all([
+				directNotes.length < sourceTarget(settings.followingPercent) ? fetchDirectNotes(days) : Promise.resolve([]),
+				twoHopNotes.length < sourceTarget(settings.twoHopPercent) ? fetchTwoHopNotes(days) : Promise.resolve([]),
+			]);
+			directNotes = [...new Map([...directNotes, ...olderDirect].map(note => [note.id, note])).values()];
+			twoHopNotes = [...new Map([...twoHopNotes, ...olderTwoHop].map(note => [note.id, note])).values()];
+			if (directNotes.length >= sourceTarget(settings.followingPercent) && twoHopNotes.length >= sourceTarget(settings.twoHopPercent)) break;
+		}
+		const noteLists = [sharedNotes, directNotes, twoHopNotes];
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
 		// A plain renote is displayed as its original, so include the original's
 		// files when evaluating the sensitive-file penalty as well.
@@ -353,6 +363,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// Keep the renoter as the social signal, but score the note the reader
 			// will actually see. Quotes intentionally retain their own wrapper here.
 			const rankingNote = plainRenote ? note.renote! : note;
+			// Do not recommend the reader's own post. This also covers a public
+			// original that another account has purely renoted.
+			if (rankingNote.userId === me.id) return [];
 			const reactions = Object.values(rankingNote.reactions).reduce((sum, count) => sum + count, 0);
 			const ageHours = Math.max(0, (now - this.idService.parse(rankingNote.id).date.getTime()) / 3600000);
 			const freshness = Math.pow(0.5, ageHours / 8);
@@ -371,22 +384,75 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const uniqueScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
 		const forced = uniqueScored.filter(item => item.forced).slice(0, settings.forcedLimit);
 		const forcedTargets = new Set(forced.map(item => item.targetId));
+		// The minimum score is a discovery-quality threshold. Do not apply it to
+		// notes from accounts the reader follows: Home and followers-only notes are
+		// intentionally less public, so they do not receive the public-note bonus,
+		// yet they are already authorised by the normal visibility query above.
+		// They must remain available for the configured following-source share.
+		const eligible = uniqueScored.filter(item => item.forced || item.source === 'following' || item.quality >= settings.minimumScore);
 		const selectionSettings = resultLimit === settings.resultLimit ? settings : { ...settings, resultLimit };
-		const selected = this.selectSources(uniqueScored.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, true);
-		// Forced rules are priority rules, not merely a score bonus. Keep these at the
-		// head of the fixed snapshot. When the user asks to mix Home, retain the Home
-		// portion's chronological order while leaving the other sources score-mixed.
-		const regular = includeFollowing
-			? [...selected.filter(item => item.source === 'following').sort((a, b) => b.id.localeCompare(a.id)), ...this.interleave(selected.filter(item => item.source !== 'following'), settings, seed)]
-			: this.interleave(selected, settings, seed);
+		let selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed);
+		// Source selection normally honours the configured ratios, but a depleted
+		// source can fall back to another list while iterating. Do not let that
+		// fallback erase the followed-account share when visible Home/followers
+		// notes actually exist for the reader.
+		const wantedFollowing = sourceTarget(settings.followingPercent);
+		const selectedFollowing = selected.filter(item => item.source === 'following').length;
+		if (selectedFollowing < wantedFollowing) {
+			const selectedTargets = new Set(selected.map(item => item.targetId));
+			const replacements = eligible
+				.filter(item => item.source === 'following' && !item.forced && !forcedTargets.has(item.targetId) && !selectedTargets.has(item.targetId))
+				.sort((a, b) => b.quality - a.quality)
+				.slice(0, wantedFollowing - selectedFollowing);
+			for (const replacement of replacements) {
+				const replaceAt = selected.map(item => item.source === 'unknown' || item.source === 'twoHop').lastIndexOf(true);
+				if (replaceAt < 0) break;
+				selected[replaceAt] = replacement;
+			}
+		}
+		// Home-eligible notes are scored and interleaved with every other source;
+		// they are no longer inserted as an independent chronological Home segment.
+		const regular = this.interleave(selected, settings, seed);
 		return [...forced, ...regular].slice(0, resultLimit).map(item => item.displayId);
 	}
 
-	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, includeFollowing: boolean): T[] {
+	private async getRecommendationContext(me: MiLocalUser): Promise<RecommendationContext> {
+		const key = `torikago:recommended:${recommendationCacheVersion}:context:${me.id}`;
+		const cached = await this.redisClient.get(key);
+		if (cached != null) {
+			try {
+				const context = JSON.parse(cached) as RecommendationContext;
+				if (Array.isArray(context.followingIds) && Array.isArray(context.twoHopRows) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity)) return context;
+			} catch {
+				// Rebuild a malformed or obsolete cache entry.
+			}
+		}
+
+		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
+		const twoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
+			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
+			.where('following.followerId IN (:...followingIds)', { followingIds }).andWhere('following.followeeId != :meId', { meId: me.id })
+			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(80).getRawMany();
+		const authorIds = [...new Set([me.id, ...followingIds, ...twoHopRows.map(row => row.userId)])];
+		const [reactionRows, favoriteRows, renoteRows] = authorIds.length === 0 ? [[], [], []] : await Promise.all([
+			this.noteReactionsRepository.createQueryBuilder('reaction').innerJoin('reaction.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('reaction.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
+			this.noteFavoritesRepository.createQueryBuilder('favorite').innerJoin('favorite.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('favorite.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
+			this.notesRepository.createQueryBuilder('ownRenote').innerJoin('ownRenote.renote', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('ownRenote.userId = :meId', { meId: me.id }).andWhere('ownRenote.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 90 * 86400000) }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
+		]);
+		const context: RecommendationContext = {
+			followingIds,
+			twoHopRows,
+			reactionAffinity: reactionRows.map(row => [row.userId, Number(row.count)]),
+			favoriteAffinity: favoriteRows.map(row => [row.userId, Number(row.count)]),
+			renoteAffinity: renoteRows.map(row => [row.userId, Number(row.count)]),
+		};
+		await this.redisClient.set(key, JSON.stringify(context), 'EX', 300);
+		return context;
+	}
+
+	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, seed: string): T[] {
 		const bySource = new Map(['following', 'twoHop', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
-		const percentages: Array<[string, number]> = includeFollowing
-			? [['twoHop', settings.twoHopPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]]
-			: [['twoHop', settings.twoHopPercent], ['unknown', settings.unknownPercent]];
+		const percentages: Array<[string, number]> = [['twoHop', settings.twoHopPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
 		if (percentages.every(([, percent]) => percent === 0)) percentages[0]![1] = 100;
 		const out: T[] = []; const counts = new Map<string, number>(); const targets = new Set<string>();
 		for (let i = 0; i < settings.resultLimit; i++) {
@@ -395,8 +461,15 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			let picked: T | undefined;
 			for (const source of sources) {
 				const list = bySource.get(source) ?? [];
-				picked = list.find(item => !targets.has(item.targetId) && (counts.get(item.authorId) ?? 0) < settings.maxNotesPerAuthor);
-				if (picked != null) { list.splice(list.indexOf(picked), 1); break; }
+				const eligible = list.filter(item => !targets.has(item.targetId) && (counts.get(item.authorId) ?? 0) < settings.maxNotesPerAuthor);
+				if (eligible.length > 0) {
+					// Sampling from the stronger portion rather than always taking rank 1
+					// prevents every snapshot from having the same score-heavy head.
+					const windowSize = Math.max(1, Math.ceil(eligible.length * 0.6));
+					picked = eligible[Math.floor(this.seededRandom(`${seed}:source:${source}:${i}`) * windowSize)]!;
+					list.splice(list.indexOf(picked), 1);
+					break;
+				}
 			}
 			if (picked == null) break;
 			out.push(picked); targets.add(picked.targetId); counts.set(picked.authorId, (counts.get(picked.authorId) ?? 0) + 1);
@@ -423,7 +496,17 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				if (counts[type] > order.filter(x => x === type).length) order.push(type);
 			}
 		}
-		for (const type of order) { const item = pools[type].find(x => !used.has(x)); if (item != null) { output.push(item); used.add(item); } }
+		for (const [index, type] of order.entries()) {
+			const candidates = pools[type].filter(item => !used.has(item));
+			if (candidates.length === 0) continue;
+			// Draw independently from each score/freshness category. The seed keeps
+			// pagination stable while avoiding a concentration of the top-ranked
+			// notes at the beginning of every response.
+			const windowSize = Math.max(1, Math.ceil(candidates.length * 0.6));
+			const item = candidates[Math.floor(this.seededRandom(`${seed}:display:${type}:${index}`) * windowSize)]!;
+			output.push(item);
+			used.add(item);
+		}
 		// The first slots preserve a deliberate quality/freshness mix. Shuffle the
 		// remaining eligible items with a snapshot-stable seed so lower-scored notes
 		// are not deterministically relegated to the bottom on every refresh.

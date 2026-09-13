@@ -10,6 +10,7 @@ import type { Config } from '@/config.js';
 import { DI } from '@/di-symbols.js';
 import { DEFAULT_POLICIES } from '@/core/RoleService.js';
 import { SystemAccountService } from '@/core/SystemAccountService.js';
+import { getAbuseReportReasons } from '@/core/AbuseReportReasons.js';
 
 export const meta = {
 	tags: ['meta'],
@@ -421,6 +422,11 @@ export const meta = {
 				type: 'object',
 				optional: false, nullable: false,
 			},
+			abuseReportReasons: {
+				type: 'array',
+				optional: false, nullable: false,
+				items: { type: 'string' },
+			},
 			perLocalUserUserTimelineCacheMax: {
 				type: 'number',
 				optional: false, nullable: false,
@@ -781,6 +787,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				recommendedTimelineAllowedUserIds: instance.recommendedTimelineAllowedUserIds,
 				recommendedTimelineForcedWords: instance.recommendedTimelineForcedWords,
 				recommendedTimelineSettings: instance.recommendedTimelineSettings,
+				abuseReportReasons: getAbuseReportReasons(instance.abuseReportReasons),
 				perLocalUserUserTimelineCacheMax: instance.perLocalUserUserTimelineCacheMax,
 				perRemoteUserUserTimelineCacheMax: instance.perRemoteUserUserTimelineCacheMax,
 				perUserHomeTimelineCacheMax: instance.perUserHomeTimelineCacheMax,
