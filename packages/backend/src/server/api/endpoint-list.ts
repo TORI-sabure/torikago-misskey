@@ -433,6 +433,8 @@ export * as 'users/update-memo' from './endpoints/users/update-memo.js';
 export * as 'users/disliked-emoji-memo' from './endpoints/users/disliked-emoji-memo.js';
 export * as 'users/disliked-emoji-memo-add' from './endpoints/users/disliked-emoji-memo-add.js';
 export * as 'users/disliked-emoji-memo-delete' from './endpoints/users/disliked-emoji-memo-delete.js';
+export * as 'users/set-reduced-recommendation' from './endpoints/users/set-reduced-recommendation.js';
+export * as 'users/reduced-recommendation' from './endpoints/users/reduced-recommendation.js';
 export * as 'verify-email' from './endpoints/verify-email.js';
 export * as 'chat/messages/create-to-user' from './endpoints/chat/messages/create-to-user.js';
 export * as 'chat/messages/create-to-room' from './endpoints/chat/messages/create-to-room.js';

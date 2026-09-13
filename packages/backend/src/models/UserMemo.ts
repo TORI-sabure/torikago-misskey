@@ -51,4 +51,10 @@ export class MiUserMemo {
 		comment: 'Personal list of emojis the author believes the target user dislikes.',
 	})
 	public dislikedEmojis: string[];
+
+	@Column('boolean', {
+		default: false,
+		comment: 'Whether the author wants this account shown less often in recommendations.',
+	})
+	public reduceRecommendations: boolean;
 }

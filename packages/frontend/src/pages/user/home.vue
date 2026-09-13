@@ -72,6 +72,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 						</div>
 						<div v-if="$i && $i.id !== user.id" class="dislikedEmojiMemo">
 							<MkButton small @click="openDislikedEmojiMemo">{{ dislikedEmojiMemoLabel }}</MkButton>
+							<MkButton small @click="toggleReducedRecommendation">{{ reducedRecommendation ? reducedRecommendationRestoreLabel : reducedRecommendationLabel }}</MkButton>
 						</div>
 						<div v-if="isEditingMemo || memoDraft" class="memo" :class="{'no-memo': !memoDraft}">
 							<div class="heading">{{ i18n.ts.memo }}</div>
@@ -241,11 +242,26 @@ const dislikedEmojiMemoLabels: Record<string, string> = {
 	'es-ES': 'Anotar emojis no deseados', 'pt-PT': 'Memorizar emojis indesejados',
 };
 const dislikedEmojiMemoLabel = dislikedEmojiMemoLabels[lang] ?? dislikedEmojiMemoLabels['en-US']!;
+const reducedRecommendation = ref(false);
+const reducedRecommendationLabels: Record<string, string> = { 'en-US': 'Show this account less often', 'ja-JP': 'このアカウントの表示を減らす', 'ja-KS': 'このアカウントをあんまり出さん', 'ko-KR': '이 계정의 표시 줄이기', 'zh-CN': '减少显示此账号', 'zh-TW': '減少顯示此帳號' };
+const reducedRecommendationRestoreLabels: Record<string, string> = { 'en-US': 'Restore recommendation display', 'ja-JP': 'おすすめでの表示を戻す', 'ja-KS': 'おすすめでの表示を戻す', 'ko-KR': '추천 표시 복원', 'zh-CN': '恢复推荐显示', 'zh-TW': '恢復推薦顯示' };
+const reducedRecommendationLabel = reducedRecommendationLabels[lang] ?? reducedRecommendationLabels['en-US']!;
+const reducedRecommendationRestoreLabel = reducedRecommendationRestoreLabels[lang] ?? reducedRecommendationRestoreLabels['en-US']!;
 
 function openDislikedEmojiMemo() {
 	const { dispose } = os.popup(defineAsyncComponent(() => import('@/components/MkDislikedEmojiMemoDialog.vue')), {
 		userId: user.value.id,
 	}, { closed: () => dispose() });
+}
+
+async function toggleReducedRecommendation() {
+	const next = !reducedRecommendation.value;
+	await misskeyApi('users/set-reduced-recommendation', { userId: user.value.id, reduce: next });
+	reducedRecommendation.value = next;
+}
+
+if ($i && $i.id !== props.user.id) {
+	misskeyApi('users/reduced-recommendation', { userId: props.user.id }).then(value => { reducedRecommendation.value = value; }).catch(() => {});
 }
 
 watch(moderationNote, async () => {

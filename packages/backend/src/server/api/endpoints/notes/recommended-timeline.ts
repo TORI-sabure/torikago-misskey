@@ -6,7 +6,7 @@
 import { In } from 'typeorm';
 import { Inject, Injectable } from '@nestjs/common';
 import type Redis from 'ioredis';
-import type { DriveFilesRepository, FollowingsRepository, MiMeta, NoteFavoritesRepository, NoteReactionsRepository, NotesRepository } from '@/models/_.js';
+import type { DriveFilesRepository, FollowingsRepository, MiMeta, NoteFavoritesRepository, NoteReactionsRepository, NotesRepository, UserMemoRepository } from '@/models/_.js';
 import type { MiLocalUser } from '@/models/User.js';
 import { DI } from '@/di-symbols.js';
 import { Endpoint } from '@/server/api/endpoint-base.js';
@@ -137,6 +137,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		@Inject(DI.driveFilesRepository) private driveFilesRepository: DriveFilesRepository,
 		@Inject(DI.noteReactionsRepository) private noteReactionsRepository: NoteReactionsRepository,
 		@Inject(DI.noteFavoritesRepository) private noteFavoritesRepository: NoteFavoritesRepository,
+		@Inject(DI.userMemosRepository) private userMemosRepository: UserMemoRepository,
 		@Inject(DI.redis) private redisClient: Redis.Redis,
 		@Inject(DI.redisForTimelines) private redisForTimelines: Redis.Redis,
 		private queryService: QueryService,
@@ -284,6 +285,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const reactionAffinity = new Map(context.reactionAffinity);
 		const favoriteAffinity = new Map(context.favoriteAffinity);
 		const renoteAffinity = new Map(context.renoteAffinity);
+		const reducedUserIds = new Set((await this.userMemosRepository.find({ where: { userId: me.id, reduceRecommendations: true }, select: { targetUserId: true } })).map(memo => memo.targetUserId));
 		const directSet = new Set(directIds);
 		const twoHopProof = new Map(twoHopRows.map(row => [row.userId, Number(row.socialProof)]));
 		const createVisibleQuery = (limit = settings.candidateScanLimit) => {
@@ -376,7 +378,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// A pure renote is a recommendation signal; show its public original
 			// directly so the reader does not see a redundant renote wrapper.
 			const displayId = plainRenote ? note.renoteId! : note.id;
-			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + settings.reactionBonus * Math.log1p(reactions) + 1.5 * Math.log1p(rankingNote.renoteCount) + (rankingNote.visibility === 'public' ? settings.publicBonus : 0) + (rankingNote.user?.host == null ? settings.localUserBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) + (boosted ? settings.boostBonus : 0) - (rankingNote.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (rankingNote.user?.isBot ? settings.botPenalty : 0) - (negative ? settings.negativePenalty : 0);
+			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + 5 * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + settings.reactionBonus * Math.log1p(reactions) + 1.5 * Math.log1p(rankingNote.renoteCount) + (rankingNote.visibility === 'public' ? settings.publicBonus : 0) + (rankingNote.user?.host == null ? settings.localUserBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) + (boosted ? settings.boostBonus : 0) - (rankingNote.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (rankingNote.user?.isBot ? settings.botPenalty : 0) - (negative ? settings.negativePenalty : 0) - (reducedUserIds.has(rankingNote.userId) ? 12 : 0);
 			return [{ id: note.id, displayId, targetId: this.targetId(note), authorId: rankingNote.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 }];
 		});
 		// A plain renote and its original note represent one thing to the reader.
