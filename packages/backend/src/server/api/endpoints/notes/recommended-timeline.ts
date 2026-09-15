@@ -5,6 +5,7 @@
 
 import { In } from 'typeorm';
 import { Inject, Injectable } from '@nestjs/common';
+import ms from 'ms';
 import type Redis from 'ioredis';
 import type { DriveFilesRepository, FollowingsRepository, MiMeta, NoteFavoritesRepository, NoteReactionsRepository, NotesRepository } from '@/models/_.js';
 import type { MiLocalUser } from '@/models/User.js';
@@ -81,7 +82,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v11';
+const recommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
 	followingIds: string[];
@@ -95,6 +96,14 @@ export const meta = {
 	tags: ['notes'],
 	requireCredential: true,
 	kind: 'read:account',
+
+	// A recommendation snapshot can perform several bounded database queries.
+	// Keep ordinary paging responsive, while preventing a client from creating
+	// an unlimited number of fresh snapshots in a short period.
+	limit: {
+		duration: ms('1minute'),
+		max: 60,
+	},
 	errors: {
 		featureDisabled: {
 			message: 'Recommended timeline is disabled.',
@@ -123,6 +132,7 @@ export const paramDef = {
 		previousIncludeFollowing: { type: 'boolean', default: true },
 		includeFollowing: { type: 'boolean', default: true },
 		withFiles: { type: 'boolean', default: false },
+		withRenotes: { type: 'boolean', default: true },
 		withSensitive: { type: 'boolean', default: true },
 	},
 	required: ['snapshotId'],
@@ -152,19 +162,29 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// accepting the former request parameters for older clients, but never let
 			// them create a separate discovery-only result set.
 			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:home`;
-			let resultIds = await this.redisClient.lrange(resultKey, 0, -1);
-			if (resultIds.length === 0) {
+			const snapshotReadyKey = `${resultKey}:ready`;
+			const [cachedResultIds, snapshotReady] = await Promise.all([
+				this.redisClient.lrange(resultKey, 0, -1),
+				this.redisClient.exists(snapshotReadyKey),
+			]);
+			let resultIds = cachedResultIds;
+			if (snapshotReady === 0) {
 				// The host has a known midnight load spike. Do not make a reader wait
 				// for a fresh ranking if the browser already has a usable snapshot:
 				// carry that fixed snapshot forward instead. Returning an empty array
 				// here used to render "No notes" for every reader during the protected window.
 				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:home`;
-				const previousResultIds = previousResultKey == null ? [] : await this.redisClient.lrange(previousResultKey, 0, -1);
-				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousResultIds.length > 0) {
+				const previousReadyKey = previousResultKey == null ? null : `${previousResultKey}:ready`;
+				const [previousResultIds, previousSnapshotReady] = previousResultKey == null || previousReadyKey == null ? [[], 0] : await Promise.all([
+					this.redisClient.lrange(previousResultKey, 0, -1),
+					this.redisClient.exists(previousReadyKey),
+				]);
+				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousSnapshotReady !== 0) {
 					const previousSeenIds = await this.redisClient.smembers(`${previousResultKey}:seen`);
-					const pipeline = this.redisClient.pipeline().del(resultKey);
-					pipeline.rpush(resultKey, ...previousResultIds);
+					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
+					if (previousResultIds.length > 0) pipeline.rpush(resultKey, ...previousResultIds);
 					pipeline.expire(resultKey, settings.snapshotHours * 3600);
+					pipeline.set(snapshotReadyKey, '1', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:candidate-cursor`, '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
 					if (previousSeenIds.length > 0) pipeline.sadd(`${resultKey}:seen`, ...previousSeenIds);
@@ -175,10 +195,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					// A first-time reader has no snapshot to reuse. Generate one rather
 					// than presenting an empty timeline; this is request-driven, not a
 					// midnight-wide background job.
-					resultIds = await this.buildRecommendation(me, settings, new Set(), 0, settings.resultLimit, ps.snapshotId);
-					const pipeline = this.redisClient.pipeline().del(resultKey);
+					resultIds = await this.buildRecommendation(me, settings, new Set(), 0, settings.resultLimit, ps.snapshotId, new Map(), ps.withRenotes);
+					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
 					if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
 					pipeline.expire(resultKey, settings.snapshotHours * 3600);
+					// The marker deliberately exists even for an empty list. Otherwise an
+					// empty result is mistaken for a cache miss and rebuilt on every reload.
+					pipeline.set(snapshotReadyKey, '1', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:candidate-cursor`, '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
 					await pipeline.exec();
@@ -193,26 +216,39 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// ranking. The existing IDs remain fixed, so the reader never sees items
 			// move or duplicate while loading older entries.
 			if (ps.untilId != null && pageIds.length < ps.limit) {
-				const existingNotes = resultIds.length === 0 ? [] : await this.notesRepository.find({ select: { id: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
+				const existingNotes = resultIds.length === 0 ? [] : await this.notesRepository.find({ select: { id: true, renoteId: true, userId: true, text: true, cw: true }, where: { id: In(resultIds) } });
 				const existingTargets = new Set(existingNotes.map(note => this.targetId(note)));
+				const existingAuthorCounts = new Map<string, number>();
+				for (const note of existingNotes) {
+					existingAuthorCounts.set(note.userId, (existingAuthorCounts.get(note.userId) ?? 0) + 1);
+				}
 				const cursorKey = `${resultKey}:candidate-cursor`;
-				const cursor = Number(await this.redisClient.get(cursorKey) ?? '0');
-			const batchSize = Math.min(60, Math.max(ps.limit * 2, 30));
-				const extraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId);
-				if (extraIds.length > 0) {
+				let cursor = Number(await this.redisClient.get(cursorKey) ?? '0');
+				const batchSize = Math.min(60, Math.max(ps.limit * 2, 30));
+				// A sparse candidate window must not make scrolling stop permanently.
+				// Try a few bounded windows and persist progress even when none produce
+				// a displayable note, so the next request continues farther back.
+				for (let attempt = 0; attempt < 3 && pageIds.length < ps.limit; attempt++) {
+					const extraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes);
 					// Multiple widgets or Deck columns may share this snapshot. Append only
 					// when its length is unchanged, so concurrent end-of-list requests can
 					// never append the same ranking batch twice.
 					const appended = await this.redisClient.eval(`
 						if redis.call('LLEN', KEYS[1]) ~= tonumber(ARGV[1]) then return 0 end
-						redis.call('RPUSH', KEYS[1], unpack(ARGV, 4))
+						if #ARGV > 3 then redis.call('RPUSH', KEYS[1], unpack(ARGV, 4)) end
 						redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])
 						redis.call('EXPIRE', KEYS[1], ARGV[3])
 						return 1
 					`, 2, resultKey, cursorKey, String(resultIds.length), String(cursor + 1), String(settings.snapshotHours * 3600), ...extraIds);
-					if (appended === 1) resultIds.push(...extraIds);
-					else resultIds = await this.redisClient.lrange(resultKey, 0, -1);
+					if (appended === 1) {
+						resultIds.push(...extraIds);
+						cursor++;
+					} else {
+						resultIds = await this.redisClient.lrange(resultKey, 0, -1);
+						break;
+					}
 					pageIds = resultIds.slice(offset, offset + ps.limit * 8);
+					if (extraIds.length > 0) break;
 				}
 			}
 			if (pageIds.length === 0) return [];
@@ -222,7 +258,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			});
 			const files = await this.driveFilesRepository.find({
 				select: { id: true, isSensitive: true },
-				where: { id: In([...new Set(notes.flatMap(note => note.fileIds))]) },
+				where: { id: In([...new Set(notes.flatMap(note => [...note.fileIds, ...(note.renote?.fileIds ?? [])]))]) },
 			});
 			const sensitiveFileIds = new Set(files.filter(file => file.isSensitive).map(file => file.id));
 			const noteMap = new Map(notes.map(note => [note.id, note]));
@@ -241,7 +277,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const targetId = this.targetId(note);
 					return snapshotSeen.has(targetId) || !globallySeen.has(targetId);
 				})
-				.filter(note => ps.withSensitive || !note.fileIds.some(id => sensitiveFileIds.has(id))).slice(0, ps.limit);
+				.filter(note => ps.withFiles !== true || [...note.fileIds, ...(note.renote?.fileIds ?? [])].length > 0)
+				.filter(note => ps.withSensitive || ![...note.fileIds, ...(note.renote?.fileIds ?? [])].some(id => sensitiveFileIds.has(id))).slice(0, ps.limit);
 			// A page returned to the client is the smallest reliable approximation of
 			// "seen". Never consume an entire snapshot merely because it was replaced.
 			await this.markSeen(me.id, resultKey, ordered.map(note => this.targetId(note)), settings);
@@ -260,9 +297,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const value = raw[key];
 			return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.floor(value))) : defaults[key] as number;
 		};
+		const unboundedInteger = (key: keyof Settings, min: number) => {
+			const value = raw[key];
+			const integerValue = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : null;
+			return integerValue != null && Number.isSafeInteger(integerValue) ? Math.max(min, integerValue) : defaults[key] as number;
+		};
 		const strings = (key: keyof Settings) => Array.isArray(raw[key]) ? raw[key].filter((x): x is string => typeof x === 'string').slice(0, 100) : defaults[key] as string[];
 		return {
-			candidatePoolLimit: integer('candidatePoolLimit', 100, 10000), candidateScanLimit: integer('candidateScanLimit', 30, 200), resultLimit: integer('resultLimit', 20, 100),
+			candidatePoolLimit: unboundedInteger('candidatePoolLimit', 100), candidateScanLimit: integer('candidateScanLimit', 30, 200), resultLimit: integer('resultLimit', 20, 100),
 			snapshotHours: integer('snapshotHours', 1, 168), seenDays: integer('seenDays', 1, 30), seenLimit: integer('seenLimit', 100, 5000),
 			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
@@ -272,14 +314,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		};
 	}
 
-	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = ''): Promise<string[]> {
+	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true): Promise<string[]> {
 		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + settings.candidateScanLimit - 1);
-		const context = await this.getRecommendationContext(me);
+		const context = await this.getRecommendationContext(me, settings);
 		const followingIds = context.followingIds;
 		const directIds = followingIds;
 		const twoHopRows = context.twoHopRows;
 		const twoHopIds = twoHopRows.map(row => row.userId);
-		if (candidateIds.length === 0 && directIds.length === 0) return [];
+		if (candidateIds.length === 0 && directIds.length === 0 && twoHopIds.length === 0) return [];
 
 		const reactionAffinity = new Map(context.reactionAffinity);
 		const favoriteAffinity = new Map(context.favoriteAffinity);
@@ -302,14 +344,27 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// intentionally small: ranking needs a varied shortlist, not every note
 		// written by every followed account.
 		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
-		const fetchDirectNotes = (days: number) => directIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(sourceNoteLimit)
+		const directFetchLimit = Math.min(240, Math.max(sourceNoteLimit, resultLimit * 4));
+		// The two-hop graph is ordered by the number of followed accounts that
+		// connect the reader to each author. Query the wider, socially strongest
+		// cohort independently from the shared pool, while keeping a bounded scan.
+		const prioritizedTwoHopIds = twoHopIds;
+		const twoHopFetchLimit = Math.min(300, Math.max(sourceNoteLimit, resultLimit * 4));
+		const fetchDirectNotes = (days: number) => directIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(directFetchLimit)
 			.andWhere('note.userId = ANY(:directIds)', { directIds })
+			// Match Home timeline semantics: ordinary posts and self-replies belong
+			// in this source, while replies to other accounts must not crowd them out.
+			.andWhere('(note.replyId IS NULL OR note.replyUserId = note.userId)')
 			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
+			.skip(Math.max(0, candidateOffset))
 			.getMany();
-		const fetchTwoHopNotes = (days: number) => twoHopIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(sourceNoteLimit)
-			.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds })
+		const fetchTwoHopNotes = (days: number) => prioritizedTwoHopIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(twoHopFetchLimit)
+			.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds: prioritizedTwoHopIds })
 			.andWhere('note.visibility = \'public\'')
 			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
+			// Subsequent scroll batches inspect older notes from the same strong social
+			// cohort. The final selector enforces maxNotesPerAuthor across the snapshot.
+			.skip(Math.max(0, candidateOffset))
 			.getMany();
 		const [sharedNotes, initialDirectNotes, initialTwoHopNotes] = await Promise.all([
 			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
@@ -318,21 +373,26 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		]);
 		let directNotes = initialDirectNotes;
 		let twoHopNotes = initialTwoHopNotes;
+		const seen = new Set(await this.redisClient.zrangebyscore(`torikago:recommended:${recommendationCacheVersion}:seen:${me.id}`, Date.now() - settings.seenDays * 86400000, '+inf'));
 		const sourceTarget = (percent: number) => {
 			const total = settings.twoHopPercent + settings.followingPercent + settings.unknownPercent;
 			return percent === 0 ? 0 : Math.max(1, Math.ceil(resultLimit * percent / Math.max(total, 1)));
+		};
+		const hasUsableTarget = (note: typeof directNotes[number]) => {
+			const plainRenote = note.renote != null && (note.text == null || note.text === '') && (note.cw == null || note.cw === '');
+			return !seen.has(this.targetId(note)) && !excludedTargets.has(this.targetId(note)) && (includeRenotes || !plainRenote) && (!plainRenote || note.renote?.visibility === 'public');
 		};
 		// Most requests inspect only the recent week. When a quiet period leaves a
 		// personalised source below its configured share, widen only that source in
 		// stages. This avoids turning every recommendation request into a 90-day scan.
 		for (const days of [...new Set([30, settings.fallbackMaxAgeDays])].filter(days => days > 7)) {
 			const [olderDirect, olderTwoHop] = await Promise.all([
-				directNotes.length < sourceTarget(settings.followingPercent) ? fetchDirectNotes(days) : Promise.resolve([]),
-				twoHopNotes.length < sourceTarget(settings.twoHopPercent) ? fetchTwoHopNotes(days) : Promise.resolve([]),
+				directNotes.filter(hasUsableTarget).length < sourceTarget(settings.followingPercent) ? fetchDirectNotes(days) : Promise.resolve([]),
+				twoHopNotes.filter(hasUsableTarget).length < sourceTarget(settings.twoHopPercent) ? fetchTwoHopNotes(days) : Promise.resolve([]),
 			]);
 			directNotes = [...new Map([...directNotes, ...olderDirect].map(note => [note.id, note])).values()];
 			twoHopNotes = [...new Map([...twoHopNotes, ...olderTwoHop].map(note => [note.id, note])).values()];
-			if (directNotes.length >= sourceTarget(settings.followingPercent) && twoHopNotes.length >= sourceTarget(settings.twoHopPercent)) break;
+			if (directNotes.filter(hasUsableTarget).length >= sourceTarget(settings.followingPercent) && twoHopNotes.filter(hasUsableTarget).length >= sourceTarget(settings.twoHopPercent)) break;
 		}
 		const noteLists = [sharedNotes, directNotes, twoHopNotes];
 		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
@@ -340,7 +400,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// files when evaluating the sensitive-file penalty as well.
 		const fileIds = [...new Set(notes.flatMap(note => [...note.fileIds, ...(note.renote?.fileIds ?? [])]))];
 		const sensitiveFileIds = new Set((await this.driveFilesRepository.find({ select: { id: true }, where: { id: In(fileIds), isSensitive: true } })).map(file => file.id));
-		const seen = new Set(await this.redisClient.zrangebyscore(`torikago:recommended:${recommendationCacheVersion}:seen:${me.id}`, Date.now() - settings.seenDays * 86400000, '+inf'));
 		const forcedWords = (this.serverSettings.recommendedTimelineForcedWords ?? []).map(word => word.toLocaleLowerCase());
 		const now = Date.now();
 		const normalizedAccounts = (accounts: string[]) => new Set(accounts.map(x => x.trim().replace(/^@/, '').toLocaleLowerCase()).filter(Boolean));
@@ -354,6 +413,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// A renote with no own text or CW is the only form that may be replaced
 			// with its original. Quote posts retain their wrapper and commentary.
 			const plainRenote = note.renote != null && (note.text == null || note.text === '') && (note.cw == null || note.cw === '');
+			if (plainRenote && !includeRenotes) return [];
 			// We only expose a renote's original when it is public. Non-public
 			// originals are skipped rather than leaking their content through a
 			// recommendation.
@@ -382,16 +442,23 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// A plain renote and its original note represent one thing to the reader.
 		// Keep the stronger candidate before splitting forced and regular slots.
 		const uniqueScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
-		const forced = uniqueScored.filter(item => item.forced).slice(0, settings.forcedLimit);
+		const selectedAuthorCounts = new Map(existingAuthorCounts);
+		const forced: typeof uniqueScored = [];
+		for (const item of uniqueScored) {
+			if (!item.forced || forced.length >= settings.forcedLimit) continue;
+			if ((selectedAuthorCounts.get(item.authorId) ?? 0) >= settings.maxNotesPerAuthor) continue;
+			selectedAuthorCounts.set(item.authorId, (selectedAuthorCounts.get(item.authorId) ?? 0) + 1);
+			forced.push(item);
+		}
 		const forcedTargets = new Set(forced.map(item => item.targetId));
-		// The minimum score is a discovery-quality threshold. Do not apply it to
-		// notes from accounts the reader follows: Home and followers-only notes are
-		// intentionally less public, so they do not receive the public-note bonus,
-		// yet they are already authorised by the normal visibility query above.
-		// They must remain available for the configured following-source share.
-		const eligible = uniqueScored.filter(item => item.forced || item.source === 'following' || item.quality >= settings.minimumScore);
-		const selectionSettings = resultLimit === settings.resultLimit ? settings : { ...settings, resultLimit };
-		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed);
+		// Forced entries bypass the threshold, but every ordinary source uses the
+		// configured minimum score consistently, including followed accounts.
+		const eligible = uniqueScored.filter(item => item.forced || item.quality >= settings.minimumScore);
+		const selectionSettings = { ...settings, resultLimit: Math.max(0, resultLimit - forced.length) };
+		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed, selectedAuthorCounts);
+		for (const item of selected) {
+			selectedAuthorCounts.set(item.authorId, (selectedAuthorCounts.get(item.authorId) ?? 0) + 1);
+		}
 		// Source selection normally honours the configured ratios, but a depleted
 		// source can fall back to another list while iterating. Do not let that
 		// fallback erase the followed-account share when visible Home/followers
@@ -405,9 +472,19 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				.sort((a, b) => b.quality - a.quality)
 				.slice(0, wantedFollowing - selectedFollowing);
 			for (const replacement of replacements) {
-				const replaceAt = selected.map(item => item.source === 'unknown' || item.source === 'twoHop').lastIndexOf(true);
+				// Do not consume the reserved two-hop share merely to fill the followed
+				// share. Unknown slots are the fallback space for either personalised source.
+				const replaceAt = selected.map(item => item.source === 'unknown').lastIndexOf(true);
 				if (replaceAt < 0) break;
+				const replaced = selected[replaceAt]!;
+				const replacedCount = selectedAuthorCounts.get(replaced.authorId) ?? 0;
+				selectedAuthorCounts.set(replaced.authorId, Math.max(0, replacedCount - 1));
+				if ((selectedAuthorCounts.get(replacement.authorId) ?? 0) >= settings.maxNotesPerAuthor) {
+					selectedAuthorCounts.set(replaced.authorId, replacedCount);
+					continue;
+				}
 				selected[replaceAt] = replacement;
+				selectedAuthorCounts.set(replacement.authorId, (selectedAuthorCounts.get(replacement.authorId) ?? 0) + 1);
 			}
 		}
 		// Home-eligible notes are scored and interleaved with every other source;
@@ -416,7 +493,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return [...forced, ...regular].slice(0, resultLimit).map(item => item.displayId);
 	}
 
-	private async getRecommendationContext(me: MiLocalUser): Promise<RecommendationContext> {
+	private async getRecommendationContext(me: MiLocalUser, settings: Settings): Promise<RecommendationContext> {
 		const key = `torikago:recommended:${recommendationCacheVersion}:context:${me.id}`;
 		const cached = await this.redisClient.get(key);
 		if (cached != null) {
@@ -429,13 +506,37 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		}
 
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
-		const twoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
+		const twoHopContextLimit = Math.min(500, Math.max(80, settings.candidateScanLimit * 4));
+		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
+		const graphTwoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
 			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
 			.where('following.followerId IN (:...followingIds)', { followingIds }).andWhere('following.followeeId != :meId', { meId: me.id })
-			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(80).getRawMany();
-		const authorIds = [...new Set([me.id, ...followingIds, ...twoHopRows.map(row => row.userId)])];
-		const [reactionRows, favoriteRows, renoteRows] = authorIds.length === 0 ? [[], [], []] : await Promise.all([
-			this.noteReactionsRepository.createQueryBuilder('reaction').innerJoin('reaction.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('reaction.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
+			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(twoHopContextLimit).getRawMany();
+		// Interest discovery must not depend on the follow graph. On servers where
+		// many users are locked, the graph can contain few useful public authors,
+		// while the reader's own reactions still provide a strong personal signal.
+		const reactionRows = await this.noteReactionsRepository.createQueryBuilder('reaction')
+			.innerJoin('reaction.note', 'target')
+			.select('target.userId', 'userId')
+			.addSelect('COUNT(*)', 'count')
+			.where('reaction.userId = :meId', { meId: me.id })
+			.andWhere('target.id >= :reactionOldestId', { reactionOldestId: this.idService.gen(Date.now() - 90 * 86400000) })
+			.andWhere('target.userId != :meId', { meId: me.id })
+			.groupBy('target.userId')
+			.orderBy('COUNT(*)', 'DESC')
+			.limit(reactionInterestLimit)
+			.getRawMany<{ userId: string; count: string }>();
+		const directIdSet = new Set(followingIds);
+		const combinedTwoHopRows = new Map<string, { userId: string; socialProof: string }>();
+		for (const row of reactionRows) {
+			if (!directIdSet.has(row.userId)) combinedTwoHopRows.set(row.userId, { userId: row.userId, socialProof: '0' });
+		}
+		for (const row of graphTwoHopRows) combinedTwoHopRows.set(row.userId, row);
+		const twoHopRows = [...combinedTwoHopRows.values()].slice(0, 500);
+		// Affinity queries stay bounded even though the retrieval pool is wider.
+		// Social-proof scoring remains available for every two-hop row.
+		const authorIds = [...new Set([me.id, ...followingIds, ...twoHopRows.slice(0, 80).map(row => row.userId)])];
+		const [favoriteRows, renoteRows] = authorIds.length === 0 ? [[], []] : await Promise.all([
 			this.noteFavoritesRepository.createQueryBuilder('favorite').innerJoin('favorite.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('favorite.userId = :meId', { meId: me.id }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
 			this.notesRepository.createQueryBuilder('ownRenote').innerJoin('ownRenote.renote', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('ownRenote.userId = :meId', { meId: me.id }).andWhere('ownRenote.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - 90 * 86400000) }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
 		]);
@@ -450,11 +551,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return context;
 	}
 
-	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, seed: string): T[] {
+	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, seed: string, existingAuthorCounts = new Map<string, number>()): T[] {
 		const bySource = new Map(['following', 'twoHop', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
 		const percentages: Array<[string, number]> = [['twoHop', settings.twoHopPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
 		if (percentages.every(([, percent]) => percent === 0)) percentages[0]![1] = 100;
-		const out: T[] = []; const counts = new Map<string, number>(); const targets = new Set<string>();
+		const out: T[] = []; const counts = new Map(existingAuthorCounts); const targets = new Set<string>();
 		for (let i = 0; i < settings.resultLimit; i++) {
 			const wanted = [...percentages].sort((a, b) => ((out.filter(item => item.source === a[0]).length + 1) / Math.max(a[1], 1)) - ((out.filter(item => item.source === b[0]).length + 1) / Math.max(b[1], 1)))[0]![0];
 			const sources = [wanted, ...percentages.map(x => x[0]).filter(source => source !== wanted)];
