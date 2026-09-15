@@ -44,7 +44,9 @@ export async function sleep(ms = 250): Promise<void> {
 type WaitForOptions = NonNullable<Parameters<typeof vi.waitFor>[1]>;
 
 /** 連合の反映を待つ上限。`vi.waitFor()` を使わない待ち合わせ (ストリーミング) にも使う */
-export const FEDERATION_TIMEOUT = 10000;
+// GitHub Actions の混雑時には、受信・DB反映・Redis 配信の連鎖が 10 秒を超えることがある。
+// 成功時はイベントを受けた時点で直ちに次へ進むため、余裕を持たせても通常の実行時間は増えない。
+export const FEDERATION_TIMEOUT = 30000;
 
 /**
  * 連合の反映は非同期なので、固定時間の `sleep()` だけで待つと CI の負荷次第で容易に flaky になる。
