@@ -89,7 +89,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v21';
+const recommendationCacheVersion = 'v22';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
@@ -219,9 +219,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
 					// Always inspect the newest window, then resume older per-user windows only
 					// until there is enough content to make the initial view scrollable.
-					// Keep the newest window cheap. If it is sparse, inspect the next three
-					// windows in one ranking pass instead of repeating all DB work three times.
-					const windows = [{ cursor: 0, count: 1 }, { cursor: savedCursor, count: 3 }]
+					// Keep both passes bounded to the configured scan size. A wide joined query
+					// caused a noticeable latency spike even for readers with few followings.
+					const windows = [{ cursor: 0, count: 1 }, { cursor: savedCursor, count: 1 }]
 						.filter((window, index, items) => items.findIndex(other => other.cursor === window.cursor) === index);
 					const selectedTargets = new Set<string>();
 					const selectedAuthorCounts = new Map<string, number>();
@@ -232,7 +232,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 						const { cursor, count } = window;
 						const remaining = settings.resultLimit - resultIds.length;
 						if (remaining <= 0 || resultIds.length >= Math.min(15, settings.resultLimit)) break;
-						const includePersonalizedSources = cursorIndex < 2;
+						// Home/two-hop/affinity queries are the expensive part for accounts with
+						// many followings. Fetch them once; the second pass only backfills from the
+						// shared candidate pool. Further personalised pages are loaded on scroll.
+						const includePersonalizedSources = cursorIndex === 0;
 						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor * Math.min(15, settings.candidateScanLimit), count);
 						if (includePersonalizedSources) nextPersonalizedCursor++;
 						for (const id of extraIds) {
@@ -289,7 +292,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// a displayable note, so the next request continues farther back.
 				for (let attempt = 0; attempt < 2 && pageIds.length < ps.limit; attempt++) {
 					const includePersonalizedSources = attempt === 0;
-					const candidateWindowCount = attempt === 0 ? 1 : 2;
+					const candidateWindowCount = 1;
 					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor * Math.min(15, settings.candidateScanLimit), candidateWindowCount);
 					const extraIds = await this.spreadSnapshotAuthors(builtExtraIds, `${ps.snapshotId}:page:${cursor}`, resultIds.at(-1));
 					// Multiple widgets or Deck columns may share this snapshot. Append only
@@ -394,6 +397,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const renoteAffinity = new Map(context.renoteAffinity);
 		const directSet = new Set(directIds);
 		const twoHopProof = new Map(twoHopRows.map(row => [row.userId, Number(row.socialProof)]));
+		const directlyFollowedSubquery = this.followingsRepository.createQueryBuilder('directFollowing')
+			.select('directFollowing.followeeId')
+			.where('directFollowing.followerId = :recommendationFollowerId', { recommendationFollowerId: me.id });
 		const createVisibleQuery = (limit = settings.candidateScanLimit) => {
 			const query = this.notesRepository.createQueryBuilder('note').innerJoinAndSelect('note.user', 'user').leftJoinAndSelect('note.reply', 'reply').leftJoinAndSelect('reply.user', 'replyUser').leftJoinAndSelect('note.renote', 'renote').leftJoinAndSelect('renote.user', 'renoteUser')
 				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(limit);
@@ -421,7 +427,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// affinity notes whenever sparse shared windows advanced quickly.
 		const personalisedOffset = Math.max(0, personalizedOffset);
 		const fetchDirectNotes = (days: number) => directIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(directFetchLimit)
-			.andWhere('note.userId = ANY(:directIds)', { directIds })
+			.andWhere(`note.userId IN (${directlyFollowedSubquery.getQuery()})`)
+			.setParameters(directlyFollowedSubquery.getParameters())
 			// Match Home timeline semantics: ordinary posts and self-replies belong
 			// in this source, while replies to other accounts must not crowd them out.
 			.andWhere('(note.replyId IS NULL OR note.replyUserId = note.userId)')
@@ -565,10 +572,20 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
 		const twoHopContextLimit = Math.min(500, Math.max(80, settings.candidateScanLimit * 4));
 		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
+		const directlyFollowedSubquery = this.followingsRepository.createQueryBuilder('directFollowing')
+			.select('directFollowing.followeeId')
+			.where('directFollowing.followerId = :contextUserId', { contextUserId: me.id });
+		const alreadyFollowedSubquery = this.followingsRepository.createQueryBuilder('alreadyFollowing')
+			.select('1')
+			.where('alreadyFollowing.followerId = :contextUserId', { contextUserId: me.id })
+			.andWhere('"alreadyFollowing"."followeeId" = "following"."followeeId"');
 		const graphTwoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
 			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
-			.where('following.followerId IN (:...followingIds)', { followingIds }).andWhere('following.followeeId != :meId', { meId: me.id })
-			.andWhere('following.followeeId NOT IN (:...followingIds)', { followingIds }).groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(twoHopContextLimit).getRawMany();
+			.where(`following.followerId IN (${directlyFollowedSubquery.getQuery()})`)
+			.andWhere('following.followeeId != :meId', { meId: me.id })
+			.andWhere(`NOT EXISTS (${alreadyFollowedSubquery.getQuery()})`)
+			.setParameters({ ...directlyFollowedSubquery.getParameters(), ...alreadyFollowedSubquery.getParameters() })
+			.groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(twoHopContextLimit).getRawMany();
 		// Interest discovery must not depend on the follow graph. On servers where
 		// many users are locked, the graph can contain few useful public authors,
 		// while the reader's own reactions still provide a strong personal signal.
