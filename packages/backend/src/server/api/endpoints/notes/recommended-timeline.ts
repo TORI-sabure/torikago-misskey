@@ -174,11 +174,17 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// them create a separate discovery-only result set.
 			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:home`;
 			const snapshotReadyKey = `${resultKey}:ready`;
-			const [cachedResultIds, snapshotReady] = await Promise.all([
+			const relationshipVersionKey = `torikago:recommended:relationship-version:${me.id}`;
+			const [cachedResultIds, cachedSnapshotReady, snapshotRelationshipVersion, relationshipVersionValue] = await Promise.all([
 				this.redisClient.lrange(resultKey, 0, -1),
 				this.redisClient.exists(snapshotReadyKey),
+				this.redisClient.get(`${resultKey}:relationship-version`),
+				this.redisClient.get(relationshipVersionKey),
 			]);
-			let resultIds = cachedResultIds;
+			const relationshipVersion = relationshipVersionValue ?? '0';
+			const relationshipChanged = cachedSnapshotReady !== 0 && (snapshotRelationshipVersion ?? '0') !== relationshipVersion;
+			const snapshotReady = relationshipChanged ? 0 : cachedSnapshotReady;
+			let resultIds = relationshipChanged ? [] : cachedResultIds;
 			if (snapshotReady === 0) {
 				// The host has a known midnight load spike. Do not make a reader wait
 				// for a fresh ranking if the browser already has a usable snapshot:
@@ -186,11 +192,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// here used to render "No notes" for every reader during the protected window.
 				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:home`;
 				const previousReadyKey = previousResultKey == null ? null : `${previousResultKey}:ready`;
-				const [previousResultIds, previousSnapshotReady] = previousResultKey == null || previousReadyKey == null ? [[], 0] : await Promise.all([
+				const [previousResultIds, previousSnapshotReady, previousRelationshipVersion] = previousResultKey == null || previousReadyKey == null ? [[], 0, null] : await Promise.all([
 					this.redisClient.lrange(previousResultKey, 0, -1),
 					this.redisClient.exists(previousReadyKey),
+					this.redisClient.get(`${previousResultKey}:relationship-version`),
 				]);
-				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousSnapshotReady !== 0) {
+				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousSnapshotReady !== 0 && (previousRelationshipVersion ?? '0') === relationshipVersion) {
 					const previousSeenIds = await this.redisClient.smembers(`${previousResultKey}:seen`);
 					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
 					if (previousResultIds.length > 0) pipeline.rpush(resultKey, ...previousResultIds);
@@ -199,6 +206,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					pipeline.set(`${resultKey}:candidate-cursor`, '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:personalized-cursor`, '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
 					if (previousSeenIds.length > 0) pipeline.sadd(`${resultKey}:seen`, ...previousSeenIds);
 					pipeline.expire(`${resultKey}:seen`, settings.snapshotHours * 3600);
 					await pipeline.exec();
@@ -252,6 +260,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					pipeline.set(`${resultKey}:personalized-cursor`, String(nextPersonalizedCursor), 'EX', settings.snapshotHours * 3600);
 					pipeline.set(progressKey, String(nextCursor), 'EX', settings.seenDays * 86400);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
 					await pipeline.exec();
 				}
 			}

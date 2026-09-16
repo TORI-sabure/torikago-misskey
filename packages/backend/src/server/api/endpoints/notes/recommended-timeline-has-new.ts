@@ -18,6 +18,8 @@ export const meta = {
 
 export const paramDef = { type: 'object', properties: { snapshotId: { type: 'string', minLength: 8, maxLength: 128 }, includeFollowing: { type: 'boolean', default: true } }, required: ['snapshotId'] } as const;
 
+const recommendationCacheVersion = 'v21';
+
 @Injectable()
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export
 	constructor(@Inject(DI.meta) private serverSettings: MiMeta, @Inject(DI.redisForTimelines) private redisForTimelines: Redis.Redis, @Inject(DI.redis) private redisClient: Redis.Redis) {
@@ -25,9 +27,20 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			if (!this.serverSettings.enableRecommendedTimeline) throw new ApiError(meta.errors.featureDisabled);
 			const allowedUserIds = this.serverSettings.recommendedTimelineAllowedUserIds ?? [];
 			if (allowedUserIds.length > 0 && !allowedUserIds.includes(me.id)) return { hasNew: false };
-			const key = `torikago:recommended:v18:snapshot:${me.id}:${ps.snapshotId}:home:version`;
-			const [snapshotVersion, currentVersion] = await Promise.all([this.redisClient.get(key), this.redisForTimelines.get('torikago:recommended:version')]);
-			return { hasNew: snapshotVersion != null && snapshotVersion !== (currentVersion ?? '0') };
+			const snapshotKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:home`;
+			const relationshipVersionKey = `torikago:recommended:relationship-version:${me.id}`;
+			const [snapshotVersion, currentVersion, snapshotRelationshipVersion, relationshipVersion] = await Promise.all([
+				this.redisClient.get(`${snapshotKey}:version`),
+				this.redisForTimelines.get('torikago:recommended:version'),
+				this.redisClient.get(`${snapshotKey}:relationship-version`),
+				this.redisClient.get(relationshipVersionKey),
+			]);
+			return {
+				hasNew: snapshotVersion != null && (
+					snapshotVersion !== (currentVersion ?? '0') ||
+					(snapshotRelationshipVersion ?? '0') !== (relationshipVersion ?? '0')
+				),
+			};
 		});
 	}
 }
