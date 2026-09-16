@@ -136,6 +136,7 @@ const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
 // of doing another expensive ranking pass.
 const previousRecommendedSnapshotId = ref<string | null>(null);
 const recommendedRefreshAvailable = ref(false);
+let nextRecommendedRefreshAt = Date.now() + 60_000;
 
 if (props.src === 'antenna') {
 	paginator = markRaw(new Paginator('antennas/notes', {
@@ -331,8 +332,10 @@ if (props.src === 'recommended') {
 	// affordance on a fixed interval avoids a separate server-side check every
 	// minute; no ranking occurs until the reader explicitly presses the button.
 	useInterval(() => {
-		recommendedRefreshAvailable.value = true;
-	}, 60_000, {
+		if (Date.now() >= nextRecommendedRefreshAt) {
+			recommendedRefreshAvailable.value = true;
+		}
+	}, 5000, {
 		immediate: false,
 		afterMounted: true,
 	});
@@ -506,6 +509,10 @@ function reloadTimeline() {
 			skipRecommendedParameterReload = true;
 			previousRecommendedSnapshotId.value = recommendedSnapshotId.value;
 			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+			// The interval itself is intentionally long-lived, so move its deadline as
+			// well as hiding the button. Otherwise an old interval tick can make the
+			// refresh affordance reappear immediately after a successful reload.
+			nextRecommendedRefreshAt = Date.now() + 60_000;
 			recommendedRefreshAvailable.value = false;
 		}
 

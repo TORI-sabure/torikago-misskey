@@ -6,6 +6,7 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Brackets, IsNull } from 'typeorm';
+import type Redis from 'ioredis';
 import type { MiLocalUser, MiPartialLocalUser, MiPartialRemoteUser, MiRemoteUser, MiUser } from '@/models/User.js';
 import { IdentifiableError } from '@/misc/identifiable-error.js';
 import { QueueService } from '@/core/QueueService.js';
@@ -57,6 +58,9 @@ export class UserFollowingService implements OnModuleInit {
 
 		@Inject(DI.meta)
 		private meta: MiMeta,
+
+		@Inject(DI.redis)
+		private redisClient: Redis.Redis,
 
 		@Inject(DI.usersRepository)
 		private usersRepository: UsersRepository,
@@ -288,6 +292,7 @@ export class UserFollowingService implements OnModuleInit {
 			}, followee.id);
 		}
 
+		await this.invalidateRecommendationRelationships(follower, followee);
 		this.globalEventService.publishInternalEvent('follow', { followerId: follower.id, followeeId: followee.id });
 
 		const [followeeUser, followerUser] = await Promise.all([
@@ -380,7 +385,7 @@ export class UserFollowingService implements OnModuleInit {
 
 		this.cacheService.userFollowingsCache.refresh(follower.id);
 
-		this.decrementFollowing(following.follower, following.followee);
+		await this.decrementFollowing(following.follower, following.followee);
 
 		if (!silent && this.userEntityService.isLocalUser(follower)) {
 			// Publish unfollow event
@@ -409,6 +414,7 @@ export class UserFollowingService implements OnModuleInit {
 		follower: MiUser,
 		followee: MiUser,
 	): Promise<void> {
+		await this.invalidateRecommendationRelationships(follower, followee);
 		this.globalEventService.publishInternalEvent('unfollow', { followerId: follower.id, followeeId: followee.id });
 
 		// Neither followee nor follower has moved.
@@ -476,6 +482,18 @@ export class UserFollowingService implements OnModuleInit {
 
 			// TODO: adjust charts
 		}
+	}
+
+	private async invalidateRecommendationRelationships(follower: Pick<MiUser, 'id' | 'host'>, followee: Pick<MiUser, 'id' | 'host'>): Promise<void> {
+		const localUserIds = [follower, followee].filter(user => user.host == null).map(user => user.id);
+		if (localUserIds.length === 0) return;
+
+		const pipeline = this.redisClient.pipeline();
+		for (const userId of localUserIds) {
+			pipeline.del(`torikago:recommended:v21:context:${userId}`);
+			pipeline.incr(`torikago:recommended:relationship-version:${userId}`);
+		}
+		await pipeline.exec();
 	}
 
 	@bindThis
@@ -699,7 +717,7 @@ export class UserFollowingService implements OnModuleInit {
 
 		await this.followingsRepository.delete(following.id);
 
-		this.decrementFollowing(following.follower, following.followee);
+		await this.decrementFollowing(following.follower, following.followee);
 	}
 
 	/**
