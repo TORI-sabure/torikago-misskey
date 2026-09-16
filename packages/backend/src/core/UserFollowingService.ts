@@ -484,7 +484,7 @@ export class UserFollowingService implements OnModuleInit {
 		}
 	}
 
-	private async invalidateRecommendationRelationships(follower: MiUser, followee: MiUser): Promise<void> {
+	private async invalidateRecommendationRelationships(follower: Pick<MiUser, 'id' | 'host'>, followee: Pick<MiUser, 'id' | 'host'>): Promise<void> {
 		const localUserIds = [follower, followee].filter(user => user.host == null).map(user => user.id);
 		if (localUserIds.length === 0) return;
 
