@@ -453,9 +453,19 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// to the shared candidate pool used to skip large ranges of Home/two-hop/
 		// affinity notes whenever sparse shared windows advanced quickly.
 		const personalisedOffset = Math.max(0, personalizedOffset);
-		const fetchDirectNoteIds = (days: number) => directIds.length === 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
+		// Misskey already maintains the reader's Home timeline as a bounded Redis
+		// list. It includes followed followers-only posts and avoids searching the
+		// note table with an ever-growing author array on every recommendation load.
+		const homeTimelineIds = includePersonalizedSources
+			? await this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, personalisedOffset, personalisedOffset + directFetchLimit * 2 - 1)
+			: [];
+		// A newly created/disabled fanout cache can be empty. Keep a bounded DB
+		// fallback so a recent follow is reflected immediately without allowing the
+		// query cost to grow without limit for accounts following thousands of users.
+		const directFallbackIds = directIds.slice(0, 200);
+		const fetchDirectNoteIds = (days: number) => directFallbackIds.length === 0 || homeTimelineIds.length > 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
 			.select('note.id', 'id')
-			.andWhere('note.userId = ANY(:directIds)', { directIds })
+			.andWhere('note.userId = ANY(:directIds)', { directIds: directFallbackIds })
 			.andWhere('note.channelId IS NULL')
 			// Match Home timeline semantics: ordinary posts and self-replies belong
 			// in this source, while replies to other accounts must not crowd them out.
@@ -484,8 +494,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			includePersonalizedSources ? fetchDirectNoteIds(settings.fallbackMaxAgeDays) : [],
 			includePersonalizedSources ? fetchTwoHopNoteIds(settings.fallbackMaxAgeDays) : [],
 		]);
-		const sourceIds = [...directRows, ...twoHopRowsForNotes]
-			.map(row => row.id)
+		const sourceIds = [...homeTimelineIds, ...directRows.map(row => row.id), ...twoHopRowsForNotes.map(row => row.id)]
 			.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const hydrationIds = [...new Set([...candidateIds, ...sourceIds])];
 		const notes = hydrationIds.length === 0 ? [] : await createVisibleQuery(hydrationIds.length)
@@ -614,9 +623,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
 		const twoHopContextLimit = Math.min(500, Math.max(80, settings.candidateScanLimit * 4));
 		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
-		const graphTwoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
+		// Two-hop discovery is a recommendation sample, not an exhaustive graph
+		// export. Bounding its starting vertices prevents CPU use from scaling with
+		// every account followed by high-activity readers.
+		const graphFollowingIds = followingIds.slice(0, 200);
+		const graphTwoHopRows: { userId: string; socialProof: string }[] = graphFollowingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
 			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
-			.where('following.followerId = ANY(:followingIds)', { followingIds })
+			.where('following.followerId = ANY(:graphFollowingIds)', { graphFollowingIds })
 			.andWhere('following.followeeId != :meId', { meId: me.id })
 			.andWhere('NOT (following.followeeId = ANY(:followingIds))', { followingIds })
 			.groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(twoHopContextLimit).getRawMany();
