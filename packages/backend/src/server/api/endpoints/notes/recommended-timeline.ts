@@ -89,7 +89,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v20';
+const recommendationCacheVersion = 'v21';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
@@ -302,22 +302,26 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			]);
 			const snapshotSeen = new Set(snapshotSeenIds);
 			const globallySeen = new Set(globallySeenIds);
-			// The same fixed snapshot must remain readable while moving between views,
-			// but a later snapshot must never reintroduce a note already delivered by
-			// another snapshot. This second guard also closes the generation race where
-			// two refreshes rank candidates before either response has recorded them.
+			const pageTargets = new Set<string>();
+			// A fixed snapshot is a candidate list, not a permission to replay notes.
+			// Treat both snapshot-local and cross-snapshot history as exclusions; the
+			// final atomic claim below closes the race between concurrent requests.
 			const ordered = pageIds.map(id => noteMap.get(id)).filter(note => note != null)
 				.filter(note => {
 					const targetId = this.targetId(note);
-					return snapshotSeen.has(targetId) || !globallySeen.has(targetId);
+					return !snapshotSeen.has(targetId) && !globallySeen.has(targetId);
 				})
 				.filter(note => !this.isPastVisibilityDeadline(note))
 				.filter(note => ps.withFiles !== true || [...note.fileIds, ...(note.renote?.fileIds ?? [])].length > 0)
-				.filter(note => ps.withSensitive || ![...note.fileIds, ...(note.renote?.fileIds ?? [])].some(id => sensitiveFileIds.has(id))).slice(0, ps.limit);
-			// A page returned to the client is the smallest reliable approximation of
-			// "seen". Never consume an entire snapshot merely because it was replaced.
-			await this.markSeen(me.id, resultKey, ordered.map(note => this.targetId(note)), settings);
-			return await this.noteEntityService.packMany(ordered, me);
+				.filter(note => ps.withSensitive || ![...note.fileIds, ...(note.renote?.fileIds ?? [])].some(id => sensitiveFileIds.has(id)))
+				.filter(note => {
+					const targetId = this.targetId(note);
+					if (pageTargets.has(targetId)) return false;
+					pageTargets.add(targetId);
+					return true;
+				}).slice(0, ps.limit);
+			const claimedTargetIds = new Set(await this.claimUnseen(me.id, resultKey, ordered.map(note => this.targetId(note)), settings));
+			return await this.noteEntityService.packMany(ordered.filter(note => claimedTargetIds.has(this.targetId(note))), me);
 		});
 	}
 
@@ -697,18 +701,29 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return [...new Set([...stable, ...legacy])];
 	}
 
-	private async markSeen(userId: string, resultKey: string, noteIds: string[], settings: Settings): Promise<void> {
-		if (noteIds.length === 0) return;
+	private async claimUnseen(userId: string, resultKey: string, noteIds: string[], settings: Settings): Promise<string[]> {
+		if (noteIds.length === 0) return [];
+		const uniqueIds = [...new Set(noteIds)];
 		const key = `torikago:recommended:seen:${userId}`;
 		const now = Date.now();
-		const pipeline = this.redisClient.pipeline();
-		for (const id of noteIds) pipeline.zadd(key, now, id);
-		pipeline.sadd(`${resultKey}:seen`, ...noteIds);
-		pipeline.expire(`${resultKey}:seen`, settings.snapshotHours * 3600);
-		pipeline.zremrangebyscore(key, 0, now - settings.seenDays * 86400000);
-		pipeline.expire(key, settings.seenDays * 86400);
-		await pipeline.exec();
-		const count = await this.redisClient.zcard(key);
-		if (count > settings.seenLimit) await this.redisClient.zremrangebyrank(key, 0, count - settings.seenLimit - 1);
+		return await this.redisClient.eval(`
+			local claimed = {}
+			for i = 6, #ARGV do
+				local id = ARGV[i]
+				if redis.call('SISMEMBER', KEYS[1], id) == 0 and redis.call('ZSCORE', KEYS[2], id) == false then
+					redis.call('SADD', KEYS[1], id)
+					redis.call('ZADD', KEYS[2], ARGV[1], id)
+					table.insert(claimed, id)
+				end
+			end
+			redis.call('EXPIRE', KEYS[1], ARGV[2])
+			redis.call('ZREMRANGEBYSCORE', KEYS[2], 0, ARGV[3])
+			redis.call('EXPIRE', KEYS[2], ARGV[4])
+			local count = redis.call('ZCARD', KEYS[2])
+			if count > tonumber(ARGV[5]) then
+				redis.call('ZREMRANGEBYRANK', KEYS[2], 0, count - tonumber(ARGV[5]) - 1)
+			end
+			return claimed
+		`, 2, `${resultKey}:seen`, key, String(now), String(settings.snapshotHours * 3600), String(now - settings.seenDays * 86400000), String(settings.seenDays * 86400), String(settings.seenLimit), ...uniqueIds) as string[];
 	}
 }
