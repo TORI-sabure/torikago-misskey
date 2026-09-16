@@ -89,7 +89,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v22';
+const recommendationCacheVersion = 'v23';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
@@ -190,14 +190,20 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// for a fresh ranking if the browser already has a usable snapshot:
 				// carry that fixed snapshot forward instead. Returning an empty array
 				// here used to render "No notes" for every reader during the protected window.
-				const previousResultKey = ps.previousSnapshotId == null ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.previousSnapshotId}:home`;
+				const latestSnapshotKey = `torikago:recommended:${recommendationCacheVersion}:latest-snapshot:${me.id}:renotes:${ps.withRenotes ? '1' : '0'}`;
+				// An explicit in-app refresh supplies the preceding ID. A browser reload
+				// cannot, so remember the last compatible snapshot server-side as well.
+				const previousSnapshotId = ps.previousSnapshotId ?? await this.redisClient.get(latestSnapshotKey);
+				const previousResultKey = previousSnapshotId == null || previousSnapshotId === ps.snapshotId ? null : `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${previousSnapshotId}:home`;
 				const previousReadyKey = previousResultKey == null ? null : `${previousResultKey}:ready`;
-				const [previousResultIds, previousSnapshotReady, previousRelationshipVersion] = previousResultKey == null || previousReadyKey == null ? [[], 0, null] : await Promise.all([
+				const [previousResultIds, previousSnapshotReady, previousRelationshipVersion, previousWithRenotes] = previousResultKey == null || previousReadyKey == null ? [[], 0, null, null] : await Promise.all([
 					this.redisClient.lrange(previousResultKey, 0, -1),
 					this.redisClient.exists(previousReadyKey),
 					this.redisClient.get(`${previousResultKey}:relationship-version`),
+					this.redisClient.get(`${previousResultKey}:with-renotes`),
 				]);
-				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousSnapshotReady !== 0 && (previousRelationshipVersion ?? '0') === relationshipVersion) {
+				const previousSnapshotCompatible = previousSnapshotReady !== 0 && (previousRelationshipVersion ?? '0') === relationshipVersion && previousWithRenotes === (ps.withRenotes ? '1' : '0');
+				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousSnapshotCompatible) {
 					const previousSeenIds = await this.redisClient.smembers(`${previousResultKey}:seen`);
 					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
 					if (previousResultIds.length > 0) pipeline.rpush(resultKey, ...previousResultIds);
@@ -207,6 +213,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					pipeline.set(`${resultKey}:personalized-cursor`, '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:with-renotes`, ps.withRenotes ? '1' : '0', 'EX', settings.snapshotHours * 3600);
+					pipeline.set(latestSnapshotKey, ps.snapshotId, 'EX', settings.snapshotHours * 3600);
 					if (previousSeenIds.length > 0) pipeline.sadd(`${resultKey}:seen`, ...previousSeenIds);
 					pipeline.expire(`${resultKey}:seen`, settings.snapshotHours * 3600);
 					await pipeline.exec();
@@ -219,15 +227,32 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
 					// Always inspect the newest window, then resume older per-user windows only
 					// until there is enough content to make the initial view scrollable.
-					// Keep both passes bounded to the configured scan size. A wide joined query
-					// caused a noticeable latency spike even for readers with few followings.
-					const windows = [{ cursor: 0, count: 1 }, { cursor: savedCursor, count: 1 }]
+					// Candidate ranges remain bounded; candidate IDs are combined before one
+					// indexed hydration query instead of repeating the expensive joins.
+					// Keep a small part of the preceding snapshot that has not actually been
+					// delivered yet. Refresh used to throw these candidates away, rescan the
+					// same newest window, and rapidly exhaust quiet accounts.
+					const canReusePrevious = previousSnapshotCompatible;
+					const reusablePreviousIds = canReusePrevious
+						? previousResultIds.filter(id => !requestSeen.has(id)).slice(0, Math.min(ps.limit, Math.floor(settings.resultLimit / 2)))
+						: [];
+					// The newest window finds newly arrived notes. The resumed window may cover
+					// several inexpensive Redis-ID ranges so sparse/minimum-score-filtered pools
+					// still produce a scrollable page without one joined query per range.
+					const windows = [{ cursor: 0, count: 1 }, { cursor: savedCursor, count: 3 }]
 						.filter((window, index, items) => items.findIndex(other => other.cursor === window.cursor) === index);
 					const selectedTargets = new Set<string>();
 					const selectedAuthorCounts = new Map<string, number>();
 					let nextCursor = savedCursor;
 					let nextPersonalizedCursor = 0;
-					resultIds = [];
+					resultIds = reusablePreviousIds;
+					if (resultIds.length > 0) {
+						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true }, where: { id: In(resultIds) } });
+						for (const note of reusableNotes) {
+							selectedTargets.add(note.id);
+							selectedAuthorCounts.set(note.userId, (selectedAuthorCounts.get(note.userId) ?? 0) + 1);
+						}
+					}
 					for (const [cursorIndex, window] of windows.entries()) {
 						const { cursor, count } = window;
 						const remaining = settings.resultLimit - resultIds.length;
@@ -264,6 +289,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					pipeline.set(progressKey, String(nextCursor), 'EX', settings.seenDays * 86400);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
+					pipeline.set(`${resultKey}:with-renotes`, ps.withRenotes ? '1' : '0', 'EX', settings.snapshotHours * 3600);
+					pipeline.set(latestSnapshotKey, ps.snapshotId, 'EX', settings.snapshotHours * 3600);
 					await pipeline.exec();
 				}
 			}
@@ -292,7 +319,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// a displayable note, so the next request continues farther back.
 				for (let attempt = 0; attempt < 2 && pageIds.length < ps.limit; attempt++) {
 					const includePersonalizedSources = attempt === 0;
-					const candidateWindowCount = 1;
+					const candidateWindowCount = attempt === 0 ? 1 : 3;
 					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor * Math.min(15, settings.candidateScanLimit), candidateWindowCount);
 					const extraIds = await this.spreadSnapshotAuthors(builtExtraIds, `${ps.snapshotId}:page:${cursor}`, resultIds.at(-1));
 					// Multiple widgets or Deck columns may share this snapshot. Append only
@@ -384,7 +411,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true, includePersonalizedSources = true, seen = new Set<string>(), personalizedOffset = 0, candidateWindowCount = 1): Promise<string[]> {
 		const candidateScanSize = settings.candidateScanLimit * Math.max(1, candidateWindowCount);
-		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + candidateScanSize - 1);
+		const rawCandidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + candidateScanSize - 1);
+		// Most entries near the head have already been delivered after one or two
+		// refreshes. Discard known IDs before hydrating notes and their relations.
+		const candidateIds = rawCandidateIds.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const context = await this.getRecommendationContext(me, settings);
 		const followingIds = context.followingIds;
 		const directIds = followingIds;
@@ -397,9 +427,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const renoteAffinity = new Map(context.renoteAffinity);
 		const directSet = new Set(directIds);
 		const twoHopProof = new Map(twoHopRows.map(row => [row.userId, Number(row.socialProof)]));
-		const directlyFollowedSubquery = this.followingsRepository.createQueryBuilder('directFollowing')
-			.select('directFollowing.followeeId')
-			.where('directFollowing.followerId = :recommendationFollowerId', { recommendationFollowerId: me.id });
 		const createVisibleQuery = (limit = settings.candidateScanLimit) => {
 			const query = this.notesRepository.createQueryBuilder('note').innerJoinAndSelect('note.user', 'user').leftJoinAndSelect('note.reply', 'reply').leftJoinAndSelect('reply.user', 'replyUser').leftJoinAndSelect('note.renote', 'renote').leftJoinAndSelect('renote.user', 'renoteUser')
 				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(limit);
@@ -426,34 +453,58 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// to the shared candidate pool used to skip large ranges of Home/two-hop/
 		// affinity notes whenever sparse shared windows advanced quickly.
 		const personalisedOffset = Math.max(0, personalizedOffset);
-		const fetchDirectNotes = (days: number) => directIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(directFetchLimit)
-			.andWhere(`note.userId IN (${directlyFollowedSubquery.getQuery()})`)
-			.setParameters(directlyFollowedSubquery.getParameters())
+		// Misskey already maintains the reader's Home timeline as a bounded Redis
+		// list. It includes followed followers-only posts and avoids searching the
+		// note table with an ever-growing author array on every recommendation load.
+		const homeTimelineIds = includePersonalizedSources
+			? await this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, personalisedOffset, personalisedOffset + directFetchLimit * 2 - 1)
+			: [];
+		// A newly created/disabled fanout cache can be empty. Keep a bounded DB
+		// fallback so a recent follow is reflected immediately without allowing the
+		// query cost to grow without limit for accounts following thousands of users.
+		const directFallbackIds = directIds.slice(0, 200);
+		const fetchDirectNoteIds = (days: number) => directFallbackIds.length === 0 || homeTimelineIds.length > 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
+			.select('note.id', 'id')
+			.andWhere('note.userId = ANY(:directIds)', { directIds: directFallbackIds })
+			.andWhere('note.channelId IS NULL')
 			// Match Home timeline semantics: ordinary posts and self-replies belong
 			// in this source, while replies to other accounts must not crowd them out.
 			.andWhere('(note.replyId IS NULL OR note.replyUserId = note.userId)')
 			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
+			.orderBy('note.id', 'DESC')
+			.take(directFetchLimit)
 			.skip(personalisedOffset)
-			.getMany();
-		const fetchTwoHopNotes = (days: number) => prioritizedTwoHopIds.length === 0 ? Promise.resolve([]) : createVisibleQuery(twoHopFetchLimit)
+			.getRawMany<{ id: string }>();
+		const fetchTwoHopNoteIds = (days: number) => prioritizedTwoHopIds.length === 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
+			.select('note.id', 'id')
 			.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds: prioritizedTwoHopIds })
 			.andWhere('note.visibility = \'public\'')
+			.andWhere('note.channelId IS NULL')
 			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
 			// Subsequent scroll batches inspect older notes from the same strong social
 			// cohort. The final selector enforces maxNotesPerAuthor across the snapshot.
+			.orderBy('note.id', 'DESC')
+			.take(twoHopFetchLimit)
 			.skip(personalisedOffset)
-			.getMany();
-		const [sharedNotes, directNotes, twoHopNotes] = await Promise.all([
-			candidateIds.length > 0 ? createVisibleQuery(candidateIds.length).andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
-			includePersonalizedSources ? fetchDirectNotes(settings.fallbackMaxAgeDays) : [],
-			includePersonalizedSources ? fetchTwoHopNotes(settings.fallbackMaxAgeDays) : [],
+			.getRawMany<{ id: string }>();
+		// First select only IDs through the (userId, id) index. Applying every
+		// visibility join while PostgreSQL is still searching for followed authors
+		// made even a single sparse follow scan the large note table until timeout.
+		const [directRows, twoHopRowsForNotes] = await Promise.all([
+			includePersonalizedSources ? fetchDirectNoteIds(settings.fallbackMaxAgeDays) : [],
+			includePersonalizedSources ? fetchTwoHopNoteIds(settings.fallbackMaxAgeDays) : [],
 		]);
+		const sourceIds = [...homeTimelineIds, ...directRows.map(row => row.id), ...twoHopRowsForNotes.map(row => row.id)]
+			.filter(id => !seen.has(id) && !excludedTargets.has(id));
+		const hydrationIds = [...new Set([...candidateIds, ...sourceIds])];
+		const notes = hydrationIds.length === 0 ? [] : await createVisibleQuery(hydrationIds.length)
+			.andWhere('note.id = ANY(:hydrationIds)', { hydrationIds })
+			.getMany();
 		const sourceTarget = (percent: number) => {
 			const total = settings.twoHopPercent + settings.followingPercent + settings.unknownPercent;
 			return percent === 0 ? 0 : Math.max(1, Math.ceil(resultLimit * percent / Math.max(total, 1)));
 		};
-		const noteLists = [sharedNotes, directNotes, twoHopNotes];
-		const notes = [...new Map(noteLists.flat().map(note => [note.id, note])).values()].sort((a, b) => b.id.localeCompare(a.id));
+		notes.sort((a, b) => b.id.localeCompare(a.id));
 		// A plain renote is displayed as its original, so include the original's
 		// files when evaluating the sensitive-file penalty as well.
 		const fileIds = [...new Set(notes.flatMap(note => [...note.fileIds, ...(note.renote?.fileIds ?? [])]))];
@@ -572,19 +623,15 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
 		const twoHopContextLimit = Math.min(500, Math.max(80, settings.candidateScanLimit * 4));
 		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
-		const directlyFollowedSubquery = this.followingsRepository.createQueryBuilder('directFollowing')
-			.select('directFollowing.followeeId')
-			.where('directFollowing.followerId = :contextUserId', { contextUserId: me.id });
-		const alreadyFollowedSubquery = this.followingsRepository.createQueryBuilder('alreadyFollowing')
-			.select('1')
-			.where('alreadyFollowing.followerId = :contextUserId', { contextUserId: me.id })
-			.andWhere('"alreadyFollowing"."followeeId" = "following"."followeeId"');
-		const graphTwoHopRows: { userId: string; socialProof: string }[] = followingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
+		// Two-hop discovery is a recommendation sample, not an exhaustive graph
+		// export. Bounding its starting vertices prevents CPU use from scaling with
+		// every account followed by high-activity readers.
+		const graphFollowingIds = followingIds.slice(0, 200);
+		const graphTwoHopRows: { userId: string; socialProof: string }[] = graphFollowingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
 			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
-			.where(`following.followerId IN (${directlyFollowedSubquery.getQuery()})`)
+			.where('following.followerId = ANY(:graphFollowingIds)', { graphFollowingIds })
 			.andWhere('following.followeeId != :meId', { meId: me.id })
-			.andWhere(`NOT EXISTS (${alreadyFollowedSubquery.getQuery()})`)
-			.setParameters({ ...directlyFollowedSubquery.getParameters(), ...alreadyFollowedSubquery.getParameters() })
+			.andWhere('NOT (following.followeeId = ANY(:followingIds))', { followingIds })
 			.groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(twoHopContextLimit).getRawMany();
 		// Interest discovery must not depend on the follow graph. On servers where
 		// many users are locked, the graph can contain few useful public authors,
