@@ -89,7 +89,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v22';
+const recommendationCacheVersion = 'v21';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
@@ -219,9 +219,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
 					// Always inspect the newest window, then resume older per-user windows only
 					// until there is enough content to make the initial view scrollable.
-			// Keep every ranking query small. Large joined note queries were slower than
-			// two ordinary windows on instances with a busy federation inbox.
-			const windows = [{ cursor: 0 }, { cursor: savedCursor }]
+					// Keep the newest window cheap. If it is sparse, inspect the next three
+					// windows in one ranking pass instead of repeating all DB work three times.
+					const windows = [{ cursor: 0, count: 1 }, { cursor: savedCursor, count: 3 }]
 						.filter((window, index, items) => items.findIndex(other => other.cursor === window.cursor) === index);
 					const selectedTargets = new Set<string>();
 					const selectedAuthorCounts = new Map<string, number>();
@@ -229,11 +229,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					let nextPersonalizedCursor = 0;
 					resultIds = [];
 					for (const [cursorIndex, window] of windows.entries()) {
-						const { cursor } = window;
+						const { cursor, count } = window;
 						const remaining = settings.resultLimit - resultIds.length;
 						if (remaining <= 0 || resultIds.length >= Math.min(15, settings.resultLimit)) break;
 						const includePersonalizedSources = cursorIndex < 2;
-						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor * Math.min(15, settings.candidateScanLimit));
+						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor * Math.min(15, settings.candidateScanLimit), count);
 						if (includePersonalizedSources) nextPersonalizedCursor++;
 						for (const id of extraIds) {
 							if (!selectedTargets.has(id)) resultIds.push(id);
@@ -247,7 +247,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 								selectedAuthorCounts.set(note.userId, (selectedAuthorCounts.get(note.userId) ?? 0) + 1);
 							}
 						}
-						if (cursor > 0) nextCursor = cursor + 1;
+						if (cursor > 0) nextCursor = cursor + count;
 					}
 					resultIds = await this.spreadSnapshotAuthors(resultIds, ps.snapshotId);
 					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
@@ -289,7 +289,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// a displayable note, so the next request continues farther back.
 				for (let attempt = 0; attempt < 2 && pageIds.length < ps.limit; attempt++) {
 					const includePersonalizedSources = attempt === 0;
-					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor * Math.min(15, settings.candidateScanLimit));
+					const candidateWindowCount = attempt === 0 ? 1 : 2;
+					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor * Math.min(15, settings.candidateScanLimit), candidateWindowCount);
 					const extraIds = await this.spreadSnapshotAuthors(builtExtraIds, `${ps.snapshotId}:page:${cursor}`, resultIds.at(-1));
 					// Multiple widgets or Deck columns may share this snapshot. Append only
 					// when its length is unchanged, so concurrent end-of-list requests can
@@ -301,10 +302,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 						if tonumber(ARGV[4]) == 1 then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[3]) end
 						redis.call('EXPIRE', KEYS[1], ARGV[3])
 						return 1
-					`, 3, resultKey, cursorKey, personalizedCursorKey, String(resultIds.length), String(cursor + 1), String(settings.snapshotHours * 3600), includePersonalizedSources ? '1' : '0', String(personalizedCursor + 1), ...extraIds);
+					`, 3, resultKey, cursorKey, personalizedCursorKey, String(resultIds.length), String(cursor + candidateWindowCount), String(settings.snapshotHours * 3600), includePersonalizedSources ? '1' : '0', String(personalizedCursor + 1), ...extraIds);
 					if (appended === 1) {
 						resultIds.push(...extraIds);
-						cursor++;
+						cursor += candidateWindowCount;
 						if (includePersonalizedSources) personalizedCursor++;
 					} else {
 						resultIds = await this.redisClient.lrange(resultKey, 0, -1);
@@ -378,8 +379,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		};
 	}
 
-	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true, includePersonalizedSources = true, seen = new Set<string>(), personalizedOffset = 0): Promise<string[]> {
-		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + settings.candidateScanLimit - 1);
+	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true, includePersonalizedSources = true, seen = new Set<string>(), personalizedOffset = 0, candidateWindowCount = 1): Promise<string[]> {
+		const candidateScanSize = settings.candidateScanLimit * Math.max(1, candidateWindowCount);
+		const candidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + candidateScanSize - 1);
 		const context = await this.getRecommendationContext(me, settings);
 		const followingIds = context.followingIds;
 		const directIds = followingIds;
@@ -435,7 +437,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			.skip(personalisedOffset)
 			.getMany();
 		const [sharedNotes, directNotes, twoHopNotes] = await Promise.all([
-			candidateIds.length > 0 ? createVisibleQuery().andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
+			candidateIds.length > 0 ? createVisibleQuery(candidateIds.length).andWhere('note.id = ANY(:candidateIds)', { candidateIds }).getMany() : [],
 			includePersonalizedSources ? fetchDirectNotes(settings.fallbackMaxAgeDays) : [],
 			includePersonalizedSources ? fetchTwoHopNotes(settings.fallbackMaxAgeDays) : [],
 		]);
@@ -549,7 +551,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	}
 
 	private async getRecommendationContext(me: MiLocalUser, settings: Settings): Promise<RecommendationContext> {
-		const key = `torikago:recommended:context:${me.id}`;
+		const key = `torikago:recommended:${recommendationCacheVersion}:context:${me.id}`;
 		const cached = await this.redisClient.get(key);
 		if (cached != null) {
 			try {
