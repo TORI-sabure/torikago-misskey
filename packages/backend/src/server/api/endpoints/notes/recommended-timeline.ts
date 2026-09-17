@@ -85,7 +85,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v24';
+const recommendationCacheVersion = 'v25';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
@@ -168,6 +168,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// accepting the former request parameters for older clients, but never let
 			// them create a separate discovery-only result set.
 			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:home`;
+			const personalizedProgressKey = `torikago:recommended:${recommendationCacheVersion}:personalized-progress:${me.id}`;
 			const snapshotReadyKey = `${resultKey}:ready`;
 			const relationshipVersionKey = `torikago:recommended:relationship-version:${me.id}`;
 			const [cachedResultIds, cachedSnapshotReady, snapshotRelationshipVersion, relationshipVersionValue] = await Promise.all([
@@ -220,6 +221,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					// midnight-wide background job.
 					const progressKey = `torikago:recommended:${recommendationCacheVersion}:candidate-progress:${me.id}`;
 					const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
+					const savedPersonalizedCursor = Math.max(0, Number(await this.redisClient.get(personalizedProgressKey) ?? '0'));
 					// Always inspect the newest window, then resume older per-user windows only
 					// until there is enough content to make the initial view scrollable.
 					// Candidate ranges remain bounded; candidate IDs are combined before one
@@ -228,9 +230,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					// delivered yet. Refresh used to throw these candidates away, rescan the
 					// same newest window, and rapidly exhaust quiet accounts.
 					const canReusePrevious = previousSnapshotCompatible;
-					const reusablePreviousIds = canReusePrevious
-						? previousResultIds.filter(id => !requestSeen.has(id)).slice(0, Math.min(ps.limit, Math.floor(settings.resultLimit / 2)))
-						: [];
+					const reusablePreviousIds = canReusePrevious ? previousResultIds.slice(0, Math.min(settings.resultLimit, ps.limit * 4)) : [];
 					// The newest window finds newly arrived notes. The resumed window may cover
 					// several inexpensive Redis-ID ranges so sparse/minimum-score-filtered pools
 					// still produce a scrollable page without one joined query per range.
@@ -239,11 +239,16 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const selectedTargets = new Set<string>();
 					const selectedAuthorCounts = new Map<string, number>();
 					let nextCursor = savedCursor;
-					let nextPersonalizedCursor = 0;
+					let nextPersonalizedCursor = savedPersonalizedCursor;
 					resultIds = reusablePreviousIds;
 					if (resultIds.length > 0) {
-						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true }, where: { id: In(resultIds) } });
-						for (const note of reusableNotes) {
+						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
+						const reusableById = new Map(reusableNotes.map(note => [note.id, note]));
+						resultIds = resultIds.filter(id => {
+							const note = reusableById.get(id);
+							return note != null && !requestSeen.has(this.targetId(note));
+						});
+						for (const note of reusableNotes.filter(note => resultIds.includes(note.id))) {
 							selectedTargets.add(note.id);
 							selectedAuthorCounts.set(note.userId, (selectedAuthorCounts.get(note.userId) ?? 0) + 1);
 						}
@@ -256,8 +261,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 						// many followings. Fetch them once; the second pass only backfills from the
 						// shared candidate pool. Further personalised pages are loaded on scroll.
 						const includePersonalizedSources = cursorIndex === 0;
-						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor * Math.min(15, settings.candidateScanLimit), count);
-						if (includePersonalizedSources) nextPersonalizedCursor++;
+						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor, count);
+						if (includePersonalizedSources) nextPersonalizedCursor += this.personalizedCursorAdvance(settings, remaining);
 						for (const id of extraIds) {
 							if (!selectedTargets.has(id)) resultIds.push(id);
 						}
@@ -282,6 +287,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					pipeline.set(`${resultKey}:candidate-cursor`, String(nextCursor), 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:personalized-cursor`, String(nextPersonalizedCursor), 'EX', settings.snapshotHours * 3600);
 					pipeline.set(progressKey, String(nextCursor), 'EX', settings.seenDays * 86400);
+					pipeline.set(personalizedProgressKey, String(nextPersonalizedCursor), 'EX', settings.seenDays * 86400);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:with-renotes`, ps.withRenotes ? '1' : '0', 'EX', settings.snapshotHours * 3600);
@@ -315,7 +321,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				for (let attempt = 0; attempt < 2 && pageIds.length < ps.limit; attempt++) {
 					const includePersonalizedSources = attempt === 0;
 					const candidateWindowCount = attempt === 0 ? 1 : 3;
-					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor * Math.min(15, settings.candidateScanLimit), candidateWindowCount);
+					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor, candidateWindowCount);
 					const extraIds = await this.spreadSnapshotAuthors(builtExtraIds, `${ps.snapshotId}:page:${cursor}`, resultIds.at(-1));
 					// Multiple widgets or Deck columns may share this snapshot. Append only
 					// when its length is unchanged, so concurrent end-of-list requests can
@@ -327,11 +333,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 						if tonumber(ARGV[4]) == 1 then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[3]) end
 						redis.call('EXPIRE', KEYS[1], ARGV[3])
 						return 1
-					`, 3, resultKey, cursorKey, personalizedCursorKey, String(resultIds.length), String(cursor + candidateWindowCount), String(settings.snapshotHours * 3600), includePersonalizedSources ? '1' : '0', String(personalizedCursor + 1), ...extraIds);
+					`, 3, resultKey, cursorKey, personalizedCursorKey, String(resultIds.length), String(cursor + candidateWindowCount), String(settings.snapshotHours * 3600), includePersonalizedSources ? '1' : '0', String(personalizedCursor + this.personalizedCursorAdvance(settings, batchSize)), ...extraIds);
 					if (appended === 1) {
 						resultIds.push(...extraIds);
 						cursor += candidateWindowCount;
-						if (includePersonalizedSources) personalizedCursor++;
+						if (includePersonalizedSources) {
+							personalizedCursor += this.personalizedCursorAdvance(settings, batchSize);
+							await this.redisClient.set(personalizedProgressKey, String(personalizedCursor), 'EX', settings.seenDays * 86400);
+						}
 					} else {
 						resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 						break;
@@ -403,6 +412,15 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
 			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
+	}
+
+	private personalizedCursorAdvance(settings: Settings, resultLimit: number): number {
+		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
+		const directFetchLimit = Math.min(120, Math.max(sourceNoteLimit, resultLimit * 2));
+		// The Home source is read from Redis in a wider window than one page. Advance
+		// by that complete window so a fresh snapshot does not rescan the same already
+		// seen followed notes after every reload.
+		return directFetchLimit * 2;
 	}
 
 	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true, includePersonalizedSources = true, seen = new Set<string>(), personalizedOffset = 0, candidateWindowCount = 1): Promise<string[]> {
