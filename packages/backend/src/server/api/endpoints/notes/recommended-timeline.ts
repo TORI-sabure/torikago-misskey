@@ -85,7 +85,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v26';
+const recommendationCacheVersion = 'v27';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
@@ -168,7 +168,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// accepting the former request parameters for older clients, but never let
 			// them create a separate discovery-only result set.
 			const resultKey = `torikago:recommended:${recommendationCacheVersion}:snapshot:${me.id}:${ps.snapshotId}:home`;
-			const personalizedProgressKey = `torikago:recommended:${recommendationCacheVersion}:personalized-progress:${me.id}`;
 			const snapshotReadyKey = `${resultKey}:ready`;
 			const relationshipVersionKey = `torikago:recommended:relationship-version:${me.id}`;
 			const [cachedResultIds, cachedSnapshotReady, snapshotRelationshipVersion, relationshipVersionValue] = await Promise.all([
@@ -221,7 +220,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					// midnight-wide background job.
 					const progressKey = `torikago:recommended:${recommendationCacheVersion}:candidate-progress:${me.id}`;
 					const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
-					const savedPersonalizedCursor = Math.max(0, Number(await this.redisClient.get(personalizedProgressKey) ?? '0'));
 					// Always inspect the newest window, then resume older per-user windows only
 					// until there is enough content to make the initial view scrollable.
 					// Candidate ranges remain bounded; candidate IDs are combined before one
@@ -239,7 +237,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const selectedTargets = new Set<string>();
 					const selectedAuthorCounts = new Map<string, number>();
 					let nextCursor = savedCursor;
-					let nextPersonalizedCursor = savedPersonalizedCursor;
+					// A new snapshot must always start from the Home head. Persisting this
+					// offset across refreshes skipped the entire bounded Home cache after a
+					// single refresh for readers with fewer followed notes.
+					let nextPersonalizedCursor = 0;
 					resultIds = reusablePreviousIds;
 					if (resultIds.length > 0) {
 						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
@@ -287,7 +288,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					pipeline.set(`${resultKey}:candidate-cursor`, String(nextCursor), 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:personalized-cursor`, String(nextPersonalizedCursor), 'EX', settings.snapshotHours * 3600);
 					pipeline.set(progressKey, String(nextCursor), 'EX', settings.seenDays * 86400);
-					pipeline.set(personalizedProgressKey, String(nextPersonalizedCursor), 'EX', settings.seenDays * 86400);
 					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
 					pipeline.set(`${resultKey}:with-renotes`, ps.withRenotes ? '1' : '0', 'EX', settings.snapshotHours * 3600);
@@ -337,10 +337,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					if (appended === 1) {
 						resultIds.push(...extraIds);
 						cursor += candidateWindowCount;
-						if (includePersonalizedSources) {
-							personalizedCursor += this.personalizedCursorAdvance(settings, batchSize);
-							await this.redisClient.set(personalizedProgressKey, String(personalizedCursor), 'EX', settings.seenDays * 86400);
-						}
+						if (includePersonalizedSources) personalizedCursor += this.personalizedCursorAdvance(settings, batchSize);
 					} else {
 						resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 						break;
