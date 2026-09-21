@@ -228,17 +228,17 @@ const dislikedEmojiTitles: Record<string, string> = {
 const dislikedEmojiTitle = dislikedEmojiTitles[lang] ?? dislikedEmojiTitles['en-US']!;
 
 const dislikedEmojiDescriptions: Record<string, string> = {
-	'en-US': 'Shows a warning when someone tries to react to you with one of the specified emojis. This does not apply to users on other servers.',
-	'ja-JP': '指定した絵文字を誰かがあなたにつけようとしたとき、警告文を表示します。相手が他サーバーのユーザーである場合は適用されません。',
-	'ja-KS': '指定した絵文字を誰かがあんたにつけようとしたら、警告文を表示するで。相手がほかのサーバーのユーザーやったら適用されへんで。',
-	'ko-KR': '누군가 지정한 이모지로 나에게 반응하려 할 때 경고를 표시합니다. 다른 서버의 사용자에게는 적용되지 않습니다.',
-	'ko-GS': '누군가 지정한 이모지로 나에게 반응하려 할 때 경고를 표시합니다. 다른 서버의 사용자에게는 적용되지 않습니다.',
-	'zh-CN': '当有人尝试使用指定表情回应你时显示警告。对其他服务器的用户无效。',
-	'zh-TW': '當有人嘗試使用指定表情回應你時顯示警告。對其他伺服器的使用者無效。',
-	'de-DE': 'Zeigt eine Warnung an, wenn jemand mit einem der angegebenen Emojis auf dich reagieren möchte. Dies gilt nicht für Nutzer anderer Server.',
-	'fr-FR': 'Affiche un avertissement lorsqu’une personne essaie de réagir à votre publication avec l’un des émojis indiqués. Cela ne s’applique pas aux utilisateurs d’autres serveurs.',
-	'es-ES': 'Muestra una advertencia cuando alguien intenta reaccionar contigo usando uno de los emojis especificados. No se aplica a usuarios de otros servidores.',
-	'pt-PT': 'Mostra um aviso quando alguém tenta reagir consigo com um dos emojis especificados. Não se aplica a utilizadores de outros servidores.',
+	'en-US': 'Shows the other person a warning when they try to react to you with one of the specified emojis. This does not apply to users on other servers.',
+	'ja-JP': '指定した絵文字を誰かがあなたにつけようとしたとき、相手に警告文を表示します。相手が他サーバーのユーザーである場合は適用されません。',
+	'ja-KS': '指定した絵文字を誰かがあんたにつけようとしたら、相手に警告文を表示するで。相手がほかのサーバーのユーザーやったら適用されへんで。',
+	'ko-KR': '누군가 지정한 이모지로 나에게 반응하려 할 때, 상대방에게 경고를 표시합니다. 다른 서버의 사용자에게는 적용되지 않습니다.',
+	'ko-GS': '누군가 지정한 이모지로 나에게 반응하려 할 때, 상대방에게 경고를 표시합니다. 다른 서버의 사용자에게는 적용되지 않습니다.',
+	'zh-CN': '当有人尝试使用指定表情回应你时，向对方显示警告。对其他服务器的用户无效。',
+	'zh-TW': '當有人嘗試使用指定表情回應你時，向對方顯示警告。對其他伺服器的使用者無效。',
+	'de-DE': 'Zeigt der anderen Person eine Warnung an, wenn sie mit einem der angegebenen Emojis auf dich reagieren möchte. Dies gilt nicht für Nutzer anderer Server.',
+	'fr-FR': 'Affiche un avertissement à l’autre personne lorsqu’elle essaie de réagir à votre publication avec l’un des émojis indiqués. Cela ne s’applique pas aux utilisateurs d’autres serveurs.',
+	'es-ES': 'Muestra a la otra persona una advertencia cuando intenta reaccionar contigo usando uno de los emojis especificados. No se aplica a usuarios de otros servidores.',
+	'pt-PT': 'Mostra um aviso à outra pessoa quando tenta reagir consigo com um dos emojis especificados. Não se aplica a utilizadores de outros servidores.',
 };
 const dislikedEmojiDescription = dislikedEmojiDescriptions[lang] ?? dislikedEmojiDescriptions['en-US']!;
 
