@@ -18,7 +18,7 @@ export const meta = {
 
 export const paramDef = { type: 'object', properties: { snapshotId: { type: 'string', minLength: 8, maxLength: 128 }, includeFollowing: { type: 'boolean', default: true } }, required: ['snapshotId'] } as const;
 
-const recommendationCacheVersion = 'v23';
+const recommendationCacheVersion = 'v27';
 
 @Injectable()
 export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-disable-line import/no-default-export

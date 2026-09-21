@@ -24,7 +24,7 @@ type Settings = {
 	snapshotHours: number;
 	seenDays: number;
 	seenLimit: number;
-	twoHopPercent: number;
+	reactionAffinityPercent: number;
 	followingPercent: number;
 	unknownPercent: number;
 	qualityPercent: number;
@@ -34,13 +34,11 @@ type Settings = {
 	publicBonus: number;
 	localUserBonus: number;
 	followingBonus: number;
-	twoHopBonus: number;
 	reactionAffinityBonus: number;
 	reactionBonus: number;
 	boostBonus: number;
 	sensitivePenalty: number;
 	botPenalty: number;
-	twoHopRenoteBonus: number;
 	negativePenalty: number;
 	minimumScore: number;
 	fallbackMaxAgeDays: number;
@@ -60,7 +58,7 @@ const defaults: Settings = {
 	snapshotHours: 24,
 	seenDays: 7,
 	seenLimit: 10000,
-	twoHopPercent: 60,
+	reactionAffinityPercent: 60,
 	followingPercent: 20,
 	unknownPercent: 20,
 	qualityPercent: 50,
@@ -70,13 +68,11 @@ const defaults: Settings = {
 	publicBonus: 2,
 	localUserBonus: 2,
 	followingBonus: 4,
-	twoHopBonus: 3,
 	reactionAffinityBonus: 5,
 	reactionBonus: 1,
 	boostBonus: 4,
 	sensitivePenalty: 6,
 	botPenalty: 3,
-	twoHopRenoteBonus: 6,
 	negativePenalty: 8,
 	minimumScore: 0,
 	fallbackMaxAgeDays: 90,
@@ -89,12 +85,11 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v23';
+const recommendationCacheVersion = 'v27';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
 	followingIds: string[];
-	twoHopRows: { userId: string; socialProof: string }[];
 	reactionAffinity: Array<[string, number]>;
 	favoriteAffinity: Array<[string, number]>;
 	renoteAffinity: Array<[string, number]>;
@@ -233,9 +228,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					// delivered yet. Refresh used to throw these candidates away, rescan the
 					// same newest window, and rapidly exhaust quiet accounts.
 					const canReusePrevious = previousSnapshotCompatible;
-					const reusablePreviousIds = canReusePrevious
-						? previousResultIds.filter(id => !requestSeen.has(id)).slice(0, Math.min(ps.limit, Math.floor(settings.resultLimit / 2)))
-						: [];
+					const reusablePreviousIds = canReusePrevious ? previousResultIds.slice(0, Math.min(settings.resultLimit, ps.limit * 4)) : [];
 					// The newest window finds newly arrived notes. The resumed window may cover
 					// several inexpensive Redis-ID ranges so sparse/minimum-score-filtered pools
 					// still produce a scrollable page without one joined query per range.
@@ -244,11 +237,19 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const selectedTargets = new Set<string>();
 					const selectedAuthorCounts = new Map<string, number>();
 					let nextCursor = savedCursor;
+					// A new snapshot must always start from the Home head. Persisting this
+					// offset across refreshes skipped the entire bounded Home cache after a
+					// single refresh for readers with fewer followed notes.
 					let nextPersonalizedCursor = 0;
 					resultIds = reusablePreviousIds;
 					if (resultIds.length > 0) {
-						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true }, where: { id: In(resultIds) } });
-						for (const note of reusableNotes) {
+						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
+						const reusableById = new Map(reusableNotes.map(note => [note.id, note]));
+						resultIds = resultIds.filter(id => {
+							const note = reusableById.get(id);
+							return note != null && !requestSeen.has(this.targetId(note));
+						});
+						for (const note of reusableNotes.filter(note => resultIds.includes(note.id))) {
 							selectedTargets.add(note.id);
 							selectedAuthorCounts.set(note.userId, (selectedAuthorCounts.get(note.userId) ?? 0) + 1);
 						}
@@ -257,12 +258,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 						const { cursor, count } = window;
 						const remaining = settings.resultLimit - resultIds.length;
 						if (remaining <= 0 || resultIds.length >= Math.min(15, settings.resultLimit)) break;
-						// Home/two-hop/affinity queries are the expensive part for accounts with
+						// Home and affinity queries are the expensive part for accounts with
 						// many followings. Fetch them once; the second pass only backfills from the
 						// shared candidate pool. Further personalised pages are loaded on scroll.
 						const includePersonalizedSources = cursorIndex === 0;
-						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor * Math.min(15, settings.candidateScanLimit), count);
-						if (includePersonalizedSources) nextPersonalizedCursor++;
+						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor, count);
+						if (includePersonalizedSources) nextPersonalizedCursor += this.personalizedCursorAdvance(settings, remaining);
 						for (const id of extraIds) {
 							if (!selectedTargets.has(id)) resultIds.push(id);
 						}
@@ -320,7 +321,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				for (let attempt = 0; attempt < 2 && pageIds.length < ps.limit; attempt++) {
 					const includePersonalizedSources = attempt === 0;
 					const candidateWindowCount = attempt === 0 ? 1 : 3;
-					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor * Math.min(15, settings.candidateScanLimit), candidateWindowCount);
+					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor, candidateWindowCount);
 					const extraIds = await this.spreadSnapshotAuthors(builtExtraIds, `${ps.snapshotId}:page:${cursor}`, resultIds.at(-1));
 					// Multiple widgets or Deck columns may share this snapshot. Append only
 					// when its length is unchanged, so concurrent end-of-list requests can
@@ -332,11 +333,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 						if tonumber(ARGV[4]) == 1 then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[3]) end
 						redis.call('EXPIRE', KEYS[1], ARGV[3])
 						return 1
-					`, 3, resultKey, cursorKey, personalizedCursorKey, String(resultIds.length), String(cursor + candidateWindowCount), String(settings.snapshotHours * 3600), includePersonalizedSources ? '1' : '0', String(personalizedCursor + 1), ...extraIds);
+					`, 3, resultKey, cursorKey, personalizedCursorKey, String(resultIds.length), String(cursor + candidateWindowCount), String(settings.snapshotHours * 3600), includePersonalizedSources ? '1' : '0', String(personalizedCursor + this.personalizedCursorAdvance(settings, batchSize)), ...extraIds);
 					if (appended === 1) {
 						resultIds.push(...extraIds);
 						cursor += candidateWindowCount;
-						if (includePersonalizedSources) personalizedCursor++;
+						if (includePersonalizedSources) personalizedCursor += this.personalizedCursorAdvance(settings, batchSize);
 					} else {
 						resultIds = await this.redisClient.lrange(resultKey, 0, -1);
 						break;
@@ -398,15 +399,25 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			return integerValue != null && Number.isSafeInteger(integerValue) ? Math.max(min, integerValue) : defaults[key] as number;
 		};
 		const strings = (key: keyof Settings) => Array.isArray(raw[key]) ? raw[key].filter((x): x is string => typeof x === 'string').slice(0, 100) : defaults[key] as string[];
+		const legacyReactionAffinityPercent = typeof raw.twoHopPercent === 'number' && Number.isFinite(raw.twoHopPercent) ? Math.min(100, Math.max(0, Math.floor(raw.twoHopPercent))) : defaults.reactionAffinityPercent;
 		return {
 			candidatePoolLimit: unboundedInteger('candidatePoolLimit', 100), candidateScanLimit: integer('candidateScanLimit', 30, 200), resultLimit: integer('resultLimit', 20, 100),
 			snapshotHours: integer('snapshotHours', 1, 168), seenDays: integer('seenDays', 1, 30), seenLimit: integer('seenLimit', 1000, 100000),
-			twoHopPercent: integer('twoHopPercent', 0, 100), followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
+			reactionAffinityPercent: typeof raw.reactionAffinityPercent === 'number' && Number.isFinite(raw.reactionAffinityPercent) ? Math.min(100, Math.max(0, Math.floor(raw.reactionAffinityPercent))) : legacyReactionAffinityPercent, followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
-			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), followingBonus: integer('followingBonus', 0, 100), twoHopBonus: integer('twoHopBonus', 0, 100), reactionAffinityBonus: integer('reactionAffinityBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
-			twoHopRenoteBonus: integer('twoHopRenoteBonus', 0, 100), negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
+			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), followingBonus: integer('followingBonus', 0, 100), reactionAffinityBonus: integer('reactionAffinityBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
+			negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
 			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
+	}
+
+	private personalizedCursorAdvance(settings: Settings, resultLimit: number): number {
+		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
+		const directFetchLimit = Math.min(120, Math.max(sourceNoteLimit, resultLimit * 2));
+		// The Home source is read from Redis in a wider window than one page. Advance
+		// by that complete window so a fresh snapshot does not rescan the same already
+		// seen followed notes after every reload.
+		return directFetchLimit * 2;
 	}
 
 	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true, includePersonalizedSources = true, seen = new Set<string>(), personalizedOffset = 0, candidateWindowCount = 1): Promise<string[]> {
@@ -418,15 +429,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const context = await this.getRecommendationContext(me, settings);
 		const followingIds = context.followingIds;
 		const directIds = followingIds;
-		const twoHopRows = context.twoHopRows;
-		const twoHopIds = twoHopRows.map(row => row.userId);
-		if (candidateIds.length === 0 && (!includePersonalizedSources || (directIds.length === 0 && twoHopIds.length === 0))) return [];
+		const reactionAffinityIds = context.reactionAffinity.map(([userId]) => userId);
+		if (candidateIds.length === 0 && (!includePersonalizedSources || (directIds.length === 0 && reactionAffinityIds.length === 0))) return [];
 
 		const reactionAffinity = new Map(context.reactionAffinity);
 		const favoriteAffinity = new Map(context.favoriteAffinity);
 		const renoteAffinity = new Map(context.renoteAffinity);
 		const directSet = new Set(directIds);
-		const twoHopProof = new Map(twoHopRows.map(row => [row.userId, Number(row.socialProof)]));
+		const reactionAffinitySet = new Set(reactionAffinityIds);
 		const createVisibleQuery = (limit = settings.candidateScanLimit) => {
 			const query = this.notesRepository.createQueryBuilder('note').innerJoinAndSelect('note.user', 'user').leftJoinAndSelect('note.reply', 'reply').leftJoinAndSelect('reply.user', 'replyUser').leftJoinAndSelect('note.renote', 'renote').leftJoinAndSelect('renote.user', 'renoteUser')
 				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(limit);
@@ -444,26 +454,30 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// written by every followed account.
 		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
 		const directFetchLimit = Math.min(120, Math.max(sourceNoteLimit, resultLimit * 2));
-		// The two-hop graph is ordered by the number of followed accounts that
-		// connect the reader to each author. Query the wider, socially strongest
-		// cohort independently from the shared pool, while keeping a bounded scan.
-		const prioritizedTwoHopIds = twoHopIds.slice(0, Math.min(200, Math.max(80, settings.candidateScanLimit * 2)));
-		const twoHopFetchLimit = Math.min(140, Math.max(sourceNoteLimit, resultLimit * 2));
+		const prioritizedReactionAffinityIds = reactionAffinityIds.slice(0, Math.min(200, Math.max(80, settings.candidateScanLimit * 2)));
+		const reactionAffinityFetchLimit = Math.min(140, Math.max(sourceNoteLimit, resultLimit * 2));
 		// Personalised sources have their own snapshot-local cursor. Tying this offset
-		// to the shared candidate pool used to skip large ranges of Home/two-hop/
+		// to the shared candidate pool used to skip large ranges of Home and
 		// affinity notes whenever sparse shared windows advanced quickly.
 		const personalisedOffset = Math.max(0, personalizedOffset);
 		// Misskey already maintains the reader's Home timeline as a bounded Redis
 		// list. It includes followed followers-only posts and avoids searching the
 		// note table with an ever-growing author array on every recommendation load.
-		const homeTimelineIds = includePersonalizedSources
-			? await this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, personalisedOffset, personalisedOffset + directFetchLimit * 2 - 1)
-			: [];
+		const [homeTimelineIds, homeTimelineHeadIds] = includePersonalizedSources
+			? await Promise.all([
+				this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, personalisedOffset, personalisedOffset + directFetchLimit * 2 - 1),
+				// The persisted cursor may reach the end of Misskey's bounded Home
+				// cache. Reconsider its newest window as well; already seen targets are
+				// filtered later, so this gives newly arrived followed notes an immediate
+				// path back into recommendations without replaying old ones.
+				personalisedOffset === 0 ? Promise.resolve([]) : this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, 0, directFetchLimit - 1),
+			])
+			: [[], []];
 		// A newly created/disabled fanout cache can be empty. Keep a bounded DB
 		// fallback so a recent follow is reflected immediately without allowing the
 		// query cost to grow without limit for accounts following thousands of users.
 		const directFallbackIds = directIds.slice(0, 200);
-		const fetchDirectNoteIds = (days: number) => directFallbackIds.length === 0 || homeTimelineIds.length > 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
+		const fetchDirectNoteIds = (days: number) => directFallbackIds.length === 0 || homeTimelineIds.length > 0 || homeTimelineHeadIds.length > 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
 			.select('note.id', 'id')
 			.andWhere('note.userId = ANY(:directIds)', { directIds: directFallbackIds })
 			.andWhere('note.channelId IS NULL')
@@ -473,35 +487,36 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
 			.orderBy('note.id', 'DESC')
 			.take(directFetchLimit)
-			.skip(personalisedOffset)
+			// Redis is unavailable or empty, so start at the current Home head rather
+			// than retaining a cursor that only has meaning for Redis's bounded list.
+			.skip(0)
 			.getRawMany<{ id: string }>();
-		const fetchTwoHopNoteIds = (days: number) => prioritizedTwoHopIds.length === 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
+		const fetchReactionAffinityNoteIds = (days: number) => prioritizedReactionAffinityIds.length === 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
 			.select('note.id', 'id')
-			.andWhere('note.userId = ANY(:twoHopIds)', { twoHopIds: prioritizedTwoHopIds })
-			.andWhere('note.visibility = \'public\'')
+			.andWhere('note.userId = ANY(:reactionAffinityIds)', { reactionAffinityIds: prioritizedReactionAffinityIds })
 			.andWhere('note.channelId IS NULL')
 			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
-			// Subsequent scroll batches inspect older notes from the same strong social
-			// cohort. The final selector enforces maxNotesPerAuthor across the snapshot.
+			// Subsequent scroll batches inspect older notes from the same interest cohort.
+			// The final selector enforces maxNotesPerAuthor across the snapshot.
 			.orderBy('note.id', 'DESC')
-			.take(twoHopFetchLimit)
+			.take(reactionAffinityFetchLimit)
 			.skip(personalisedOffset)
 			.getRawMany<{ id: string }>();
 		// First select only IDs through the (userId, id) index. Applying every
 		// visibility join while PostgreSQL is still searching for followed authors
 		// made even a single sparse follow scan the large note table until timeout.
-		const [directRows, twoHopRowsForNotes] = await Promise.all([
+		const [directRows, reactionAffinityRowsForNotes] = await Promise.all([
 			includePersonalizedSources ? fetchDirectNoteIds(settings.fallbackMaxAgeDays) : [],
-			includePersonalizedSources ? fetchTwoHopNoteIds(settings.fallbackMaxAgeDays) : [],
+			includePersonalizedSources ? fetchReactionAffinityNoteIds(settings.fallbackMaxAgeDays) : [],
 		]);
-		const sourceIds = [...homeTimelineIds, ...directRows.map(row => row.id), ...twoHopRowsForNotes.map(row => row.id)]
+		const sourceIds = [...homeTimelineIds, ...homeTimelineHeadIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id)]
 			.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const hydrationIds = [...new Set([...candidateIds, ...sourceIds])];
 		const notes = hydrationIds.length === 0 ? [] : await createVisibleQuery(hydrationIds.length)
 			.andWhere('note.id = ANY(:hydrationIds)', { hydrationIds })
 			.getMany();
 		const sourceTarget = (percent: number) => {
-			const total = settings.twoHopPercent + settings.followingPercent + settings.unknownPercent;
+			const total = settings.reactionAffinityPercent + settings.followingPercent + settings.unknownPercent;
 			return percent === 0 ? 0 : Math.max(1, Math.ceil(resultLimit * percent / Math.max(total, 1)));
 		};
 		notes.sort((a, b) => b.id.localeCompare(a.id));
@@ -518,7 +533,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const boostWords = settings.boostWords.map(word => word.toLocaleLowerCase());
 		const accountName = (note: typeof notes[number]) => `${note.user?.username ?? ''}${note.user?.host ? `@${note.user.host}` : ''}`.toLocaleLowerCase();
 		const scored = notes.filter(note => !seen.has(this.targetId(note)) && !excludedTargets.has(this.targetId(note))).flatMap(note => {
-			const source = directSet.has(note.userId) ? 'following' : twoHopProof.has(note.userId) ? 'twoHop' : 'unknown';
+			const source = directSet.has(note.userId) ? 'following' : reactionAffinitySet.has(note.userId) ? 'reactionAffinity' : 'unknown';
 			// A renote with no own text or CW is the only form that may be replaced
 			// with its original. Quote posts retain their wrapper and commentary.
 			const plainRenote = note.renote != null && (note.text == null || note.text === '') && (note.cw == null || note.cw === '');
@@ -527,8 +542,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// originals are skipped rather than leaking their content through a
 			// recommendation.
 			if (plainRenote && note.renote?.visibility !== 'public') return [];
-			const plainPublicRenote = plainRenote && note.renote?.visibility === 'public';
-			const pureTwoHopRenote = source === 'twoHop' && plainPublicRenote;
 			// Keep the renoter as the social signal, but score the note the reader
 			// will actually see. Quotes intentionally retain their own wrapper here.
 			const rankingNote = plainRenote ? note.renote! : note;
@@ -550,8 +563,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// directly so the reader does not see a redundant renote wrapper.
 			const displayId = plainRenote ? note.renoteId! : note.id;
 			const isFollowedAuthor = directSet.has(rankingNote.userId);
-			const isGraphTwoHopAuthor = (twoHopProof.get(rankingNote.userId) ?? 0) > 0;
-			const quality = 4 * Math.log1p(twoHopProof.get(note.userId) ?? 0) + settings.reactionAffinityBonus * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + settings.reactionBonus * Math.log1p(reactions) + 1.5 * Math.log1p(rankingNote.renoteCount) + (rankingNote.visibility === 'public' ? settings.publicBonus : 0) + (rankingNote.user?.host == null ? settings.localUserBonus : 0) + (isFollowedAuthor ? settings.followingBonus : 0) + (isGraphTwoHopAuthor ? settings.twoHopBonus : 0) + (pureTwoHopRenote ? settings.twoHopRenoteBonus : 0) + (boosted ? settings.boostBonus : 0) - (rankingNote.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (rankingNote.user?.isBot ? settings.botPenalty : 0) - (negative ? settings.negativePenalty : 0);
+			const quality = settings.reactionAffinityBonus * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + settings.reactionBonus * Math.log1p(reactions) + 1.5 * Math.log1p(rankingNote.renoteCount) + (rankingNote.visibility === 'public' ? settings.publicBonus : 0) + (rankingNote.user?.host == null ? settings.localUserBonus : 0) + (isFollowedAuthor ? settings.followingBonus : 0) + (boosted ? settings.boostBonus : 0) - (rankingNote.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (rankingNote.user?.isBot ? settings.botPenalty : 0) - (negative ? settings.negativePenalty : 0);
 			return [{ id: note.id, displayId, targetId: this.targetId(note), authorId: rankingNote.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 }];
 		});
 		// A plain renote and its original note represent one thing to the reader.
@@ -587,8 +599,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				.sort((a, b) => b.quality - a.quality)
 				.slice(0, wantedFollowing - selectedFollowing);
 			for (const replacement of replacements) {
-				// Do not consume the reserved two-hop share merely to fill the followed
-				// share. Unknown slots are the fallback space for either personalised source.
+				// Keep the separate reaction-affinity share intact while filling the
+				// followed-account share. Unknown slots are the fallback space.
 				const replaceAt = selected.map(item => item.source === 'unknown').lastIndexOf(true);
 				if (replaceAt < 0) break;
 				const replaced = selected[replaceAt]!;
@@ -614,28 +626,16 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		if (cached != null) {
 			try {
 				const context = JSON.parse(cached) as RecommendationContext;
-				if (Array.isArray(context.followingIds) && Array.isArray(context.twoHopRows) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity)) return context;
+				if (Array.isArray(context.followingIds) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity)) return context;
 			} catch {
 				// Rebuild a malformed or obsolete cache entry.
 			}
 		}
 
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
-		const twoHopContextLimit = Math.min(500, Math.max(80, settings.candidateScanLimit * 4));
 		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
-		// Two-hop discovery is a recommendation sample, not an exhaustive graph
-		// export. Bounding its starting vertices prevents CPU use from scaling with
-		// every account followed by high-activity readers.
-		const graphFollowingIds = followingIds.slice(0, 200);
-		const graphTwoHopRows: { userId: string; socialProof: string }[] = graphFollowingIds.length === 0 ? [] : await this.followingsRepository.createQueryBuilder('following')
-			.select('following.followeeId', 'userId').addSelect('COUNT(*)', 'socialProof')
-			.where('following.followerId = ANY(:graphFollowingIds)', { graphFollowingIds })
-			.andWhere('following.followeeId != :meId', { meId: me.id })
-			.andWhere('NOT (following.followeeId = ANY(:followingIds))', { followingIds })
-			.groupBy('following.followeeId').orderBy('COUNT(*)', 'DESC').limit(twoHopContextLimit).getRawMany();
-		// Interest discovery must not depend on the follow graph. On servers where
-		// many users are locked, the graph can contain few useful public authors,
-		// while the reader's own reactions still provide a strong personal signal.
+		// Interest discovery is intentionally independent from the follow graph.
+		// It stays bounded and does not traverse anyone else's follow relationships.
 		const reactionRows = await this.noteReactionsRepository.createQueryBuilder('reaction')
 			.innerJoin('reaction.note', 'target')
 			.select('target.userId', 'userId')
@@ -647,16 +647,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			.orderBy('COUNT(*)', 'DESC')
 			.limit(reactionInterestLimit)
 			.getRawMany<{ userId: string; count: string }>();
-		const directIdSet = new Set(followingIds);
-		const combinedTwoHopRows = new Map<string, { userId: string; socialProof: string }>();
-		for (const row of reactionRows) {
-			if (!directIdSet.has(row.userId)) combinedTwoHopRows.set(row.userId, { userId: row.userId, socialProof: '0' });
-		}
-		for (const row of graphTwoHopRows) combinedTwoHopRows.set(row.userId, row);
-		const twoHopRows = [...combinedTwoHopRows.values()].slice(0, 500);
 		// Affinity queries stay bounded even though the retrieval pool is wider.
-		// Social-proof scoring remains available for every two-hop row.
-		const authorIds = [...new Set([me.id, ...followingIds.slice(0, 500), ...twoHopRows.slice(0, 80).map(row => row.userId)])];
+		const authorIds = [...new Set([me.id, ...followingIds.slice(0, 500), ...reactionRows.slice(0, 80).map(row => row.userId)])];
 		const affinityOldestId = this.idService.gen(Date.now() - 90 * 86400000);
 		const [favoriteRows, renoteRows] = authorIds.length === 0 ? [[], []] : await Promise.all([
 			this.noteFavoritesRepository.createQueryBuilder('favorite').innerJoin('favorite.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('favorite.userId = :meId', { meId: me.id }).andWhere('target.id >= :affinityOldestId', { affinityOldestId }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
@@ -664,7 +656,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		]);
 		const context: RecommendationContext = {
 			followingIds,
-			twoHopRows,
 			reactionAffinity: reactionRows.map(row => [row.userId, Number(row.count)]),
 			favoriteAffinity: favoriteRows.map(row => [row.userId, Number(row.count)]),
 			renoteAffinity: renoteRows.map(row => [row.userId, Number(row.count)]),
@@ -674,8 +665,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	}
 
 	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, seed: string, existingAuthorCounts = new Map<string, number>()): T[] {
-		const bySource = new Map(['following', 'twoHop', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
-		const percentages: Array<[string, number]> = [['twoHop', settings.twoHopPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
+		const bySource = new Map(['following', 'reactionAffinity', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
+		const percentages: Array<[string, number]> = [['reactionAffinity', settings.reactionAffinityPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
 		if (percentages.every(([, percent]) => percent === 0)) percentages[0]![1] = 100;
 		const out: T[] = []; const counts = new Map(existingAuthorCounts); const targets = new Set<string>();
 		for (let i = 0; i < settings.resultLimit; i++) {
