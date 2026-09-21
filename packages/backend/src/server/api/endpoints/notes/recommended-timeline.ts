@@ -85,7 +85,7 @@ const defaults: Settings = {
 
 // Increment when the ranking/seen semantics change so previously generated
 // snapshots and stale seen records cannot hide the corrected result set.
-const recommendationCacheVersion = 'v25';
+const recommendationCacheVersion = 'v26';
 const previousRecommendationCacheVersion = 'v18';
 
 type RecommendationContext = {
@@ -466,14 +466,21 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// Misskey already maintains the reader's Home timeline as a bounded Redis
 		// list. It includes followed followers-only posts and avoids searching the
 		// note table with an ever-growing author array on every recommendation load.
-		const homeTimelineIds = includePersonalizedSources
-			? await this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, personalisedOffset, personalisedOffset + directFetchLimit * 2 - 1)
-			: [];
+		const [homeTimelineIds, homeTimelineHeadIds] = includePersonalizedSources
+			? await Promise.all([
+				this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, personalisedOffset, personalisedOffset + directFetchLimit * 2 - 1),
+				// The persisted cursor may reach the end of Misskey's bounded Home
+				// cache. Reconsider its newest window as well; already seen targets are
+				// filtered later, so this gives newly arrived followed notes an immediate
+				// path back into recommendations without replaying old ones.
+				personalisedOffset === 0 ? Promise.resolve([]) : this.redisForTimelines.lrange(`list:homeTimeline:${me.id}`, 0, directFetchLimit - 1),
+			])
+			: [[], []];
 		// A newly created/disabled fanout cache can be empty. Keep a bounded DB
 		// fallback so a recent follow is reflected immediately without allowing the
 		// query cost to grow without limit for accounts following thousands of users.
 		const directFallbackIds = directIds.slice(0, 200);
-		const fetchDirectNoteIds = (days: number) => directFallbackIds.length === 0 || homeTimelineIds.length > 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
+		const fetchDirectNoteIds = (days: number) => directFallbackIds.length === 0 || homeTimelineIds.length > 0 || homeTimelineHeadIds.length > 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
 			.select('note.id', 'id')
 			.andWhere('note.userId = ANY(:directIds)', { directIds: directFallbackIds })
 			.andWhere('note.channelId IS NULL')
@@ -483,7 +490,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - days * 86400000) })
 			.orderBy('note.id', 'DESC')
 			.take(directFetchLimit)
-			.skip(personalisedOffset)
+			// Redis is unavailable or empty, so start at the current Home head rather
+			// than retaining a cursor that only has meaning for Redis's bounded list.
+			.skip(0)
 			.getRawMany<{ id: string }>();
 		const fetchReactionAffinityNoteIds = (days: number) => prioritizedReactionAffinityIds.length === 0 ? Promise.resolve([]) : this.notesRepository.createQueryBuilder('note')
 			.select('note.id', 'id')
@@ -503,7 +512,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			includePersonalizedSources ? fetchDirectNoteIds(settings.fallbackMaxAgeDays) : [],
 			includePersonalizedSources ? fetchReactionAffinityNoteIds(settings.fallbackMaxAgeDays) : [],
 		]);
-		const sourceIds = [...homeTimelineIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id)]
+		const sourceIds = [...homeTimelineIds, ...homeTimelineHeadIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id)]
 			.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const hydrationIds = [...new Set([...candidateIds, ...sourceIds])];
 		const notes = hydrationIds.length === 0 ? [] : await createVisibleQuery(hydrationIds.length)

@@ -490,7 +490,7 @@ export class UserFollowingService implements OnModuleInit {
 
 		const pipeline = this.redisClient.pipeline();
 		for (const userId of localUserIds) {
-			pipeline.del(`torikago:recommended:v25:context:${userId}`);
+			pipeline.del(`torikago:recommended:v26:context:${userId}`);
 			pipeline.incr(`torikago:recommended:relationship-version:${userId}`);
 		}
 		await pipeline.exec();
