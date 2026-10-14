@@ -16,6 +16,7 @@ import { QueryService } from '@/core/QueryService.js';
 import { NoteEntityService } from '@/core/entities/NoteEntityService.js';
 import { IdService } from '@/core/IdService.js';
 import { shouldHideNoteByTime } from '@/misc/should-hide-note-by-time.js';
+import { RecommendedSeenLookup, findSetMembers } from '@/misc/recommended-seen-lookup.js';
 import {
 	REACTION_RECENT_DAYS,
 	REACTION_ROW_LIMIT,
@@ -187,9 +188,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const allowedUserIds = this.serverSettings.recommendedTimelineAllowedUserIds ?? [];
 			if (allowedUserIds.length > 0 && !allowedUserIds.includes(me.id)) throw new ApiError(meta.errors.notAllowed);
 			const settings = this.settings();
-			// A request may inspect several candidate windows. Load the potentially large
-			// seen set once and share it across ranking and response filtering.
-			const requestSeen = new Set(await this.loadSeenIds(me.id, settings));
+			// A request may inspect several candidate windows. The seen history can hold up to
+			// seenLimit entries, so it is queried lazily for just the IDs being considered
+			// instead of being downloaded in full on every request.
+			const requestSeen = this.createSeenLookup(me.id, settings);
 			// Home-eligible notes are always scored as recommendation candidates. Keep
 			// accepting the former request parameters for older clients, but never let
 			// them create a separate discovery-only result set.
@@ -270,6 +272,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					resultIds = reusablePreviousIds;
 					if (resultIds.length > 0) {
 						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
+						await requestSeen.prime(reusableNotes.map(note => this.targetId(note)));
 						const reusableById = new Map(reusableNotes.map(note => [note.id, note]));
 						resultIds = resultIds.filter(id => {
 							const note = reusableById.get(id);
@@ -382,8 +385,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			});
 			const sensitiveFileIds = new Set(files.filter(file => file.isSensitive).map(file => file.id));
 			const noteMap = new Map(notes.map(note => [note.id, note]));
-			const snapshotSeenIds = await this.redisClient.smembers(`${resultKey}:seen`);
-			const snapshotSeen = new Set(snapshotSeenIds);
+			// Only the targets on this page need a seen check, so query just those instead of
+			// downloading the whole snapshot-local and cross-snapshot history.
+			const pageTargetIds = [...new Set(notes.map(note => this.targetId(note)))];
+			const [snapshotSeen] = await Promise.all([
+				findSetMembers(this.redisClient, `${resultKey}:seen`, pageTargetIds),
+				requestSeen.prime(pageTargetIds),
+			]);
 			const globallySeen = requestSeen;
 			const pageTargets = new Set<string>();
 			// A fixed snapshot is a candidate list, not a permission to replay notes.
@@ -446,11 +454,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return directFetchLimit * 2;
 	}
 
-	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true, includePersonalizedSources = true, seen = new Set<string>(), personalizedOffset = 0, candidateWindowCount = 1): Promise<string[]> {
+	private async buildRecommendation(me: MiLocalUser, settings: Settings, excludedTargets = new Set<string>(), candidateOffset = 0, resultLimit = settings.resultLimit, seed = '', existingAuthorCounts = new Map<string, number>(), includeRenotes = true, includePersonalizedSources = true, seen = new RecommendedSeenLookup(this.redisClient, [], 0), personalizedOffset = 0, candidateWindowCount = 1): Promise<string[]> {
 		const candidateScanSize = settings.candidateScanLimit * Math.max(1, candidateWindowCount);
 		const rawCandidateIds = await this.redisForTimelines.lrange('torikago:recommended:candidates', candidateOffset, candidateOffset + candidateScanSize - 1);
 		// Most entries near the head have already been delivered after one or two
 		// refreshes. Discard known IDs before hydrating notes and their relations.
+		await seen.prime(rawCandidateIds);
 		const candidateIds = rawCandidateIds.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const context = await this.getRecommendationContext(me, settings);
 		const followingIds = context.followingIds;
@@ -538,8 +547,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			includePersonalizedSources ? fetchDirectNoteIds(settings.fallbackMaxAgeDays) : [],
 			includePersonalizedSources ? fetchReactionAffinityNoteIds(settings.fallbackMaxAgeDays) : [],
 		]);
-		const sourceIds = [...homeTimelineIds, ...homeTimelineHeadIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id)]
-			.filter(id => !seen.has(id) && !excludedTargets.has(id));
+		const rawSourceIds = [...homeTimelineIds, ...homeTimelineHeadIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id)];
+		await seen.prime(rawSourceIds);
+		const sourceIds = rawSourceIds.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const hydrationIds = [...new Set([...candidateIds, ...sourceIds])];
 		const notes = hydrationIds.length === 0 ? [] : await createVisibleQuery(hydrationIds.length)
 			.andWhere('note.id = ANY(:hydrationIds)', { hydrationIds })
@@ -548,6 +558,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const total = settings.reactionAffinityPercent + settings.followingPercent + settings.unknownPercent;
 			return percent === 0 ? 0 : Math.max(1, Math.ceil(resultLimit * percent / Math.max(total, 1)));
 		};
+		await seen.prime(notes.map(note => this.targetId(note)));
 		notes.sort((a, b) => b.id.localeCompare(a.id));
 		// A plain renote is displayed as its original, so include the original's
 		// files when evaluating the sensitive-file penalty as well.
@@ -811,13 +822,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return note.renoteId != null && (note.text == null || note.text === '') && (note.cw == null || note.cw === '') ? note.renoteId : note.id;
 	}
 
-	private async loadSeenIds(userId: string, settings: Settings): Promise<string[]> {
-		const oldest = Date.now() - settings.seenDays * 86400000;
-		const [stable, legacy] = await Promise.all([
-			this.redisClient.zrangebyscore(`torikago:recommended:seen:${userId}`, oldest, '+inf'),
-			this.redisClient.zrangebyscore(`torikago:recommended:${previousRecommendationCacheVersion}:seen:${userId}`, oldest, '+inf'),
-		]);
-		return [...new Set([...stable, ...legacy])];
+	private createSeenLookup(userId: string, settings: Settings): RecommendedSeenLookup {
+		return new RecommendedSeenLookup(
+			this.redisClient,
+			[`torikago:recommended:seen:${userId}`, `torikago:recommended:${previousRecommendationCacheVersion}:seen:${userId}`],
+			Date.now() - settings.seenDays * 86400000,
+		);
 	}
 
 	private async claimUnseen(userId: string, resultKey: string, noteIds: string[], settings: Settings): Promise<string[]> {
