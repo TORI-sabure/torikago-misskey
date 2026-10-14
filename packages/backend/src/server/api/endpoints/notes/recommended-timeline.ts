@@ -209,10 +209,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const snapshotReady = relationshipChanged ? 0 : cachedSnapshotReady;
 			let resultIds = relationshipChanged ? [] : cachedResultIds;
 			if (snapshotReady === 0) {
-				// The host has a known midnight load spike. Do not make a reader wait
-				// for a fresh ranking if the browser already has a usable snapshot:
-				// carry that fixed snapshot forward instead. Returning an empty array
-				// here used to render "No notes" for every reader during the protected window.
 				const latestSnapshotKey = `torikago:recommended:${recommendationCacheVersion}:latest-snapshot:${me.id}:renotes:${ps.withRenotes ? '1' : '0'}`;
 				// An explicit in-app refresh supplies the preceding ID. A browser reload
 				// cannot, so remember the last compatible snapshot server-side as well.
@@ -226,103 +222,85 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					this.redisClient.get(`${previousResultKey}:with-renotes`),
 				]);
 				const previousSnapshotCompatible = previousSnapshotReady !== 0 && (previousRelationshipVersion ?? '0') === relationshipVersion && previousWithRenotes === (ps.withRenotes ? '1' : '0');
-				if (this.isMidnightProtectionWindow() && previousResultKey != null && previousSnapshotCompatible) {
-					const previousSeenIds = await this.redisClient.smembers(`${previousResultKey}:seen`);
-					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
-					if (previousResultIds.length > 0) pipeline.rpush(resultKey, ...previousResultIds);
-					pipeline.expire(resultKey, settings.snapshotHours * 3600);
-					pipeline.set(snapshotReadyKey, '1', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:candidate-cursor`, '0', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:personalized-cursor`, '0', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:with-renotes`, ps.withRenotes ? '1' : '0', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(latestSnapshotKey, ps.snapshotId, 'EX', settings.snapshotHours * 3600);
-					if (previousSeenIds.length > 0) pipeline.sadd(`${resultKey}:seen`, ...previousSeenIds);
-					pipeline.expire(`${resultKey}:seen`, settings.snapshotHours * 3600);
-					await pipeline.exec();
-					resultIds = previousResultIds;
-				} else {
-					// A first-time reader has no snapshot to reuse. Generate one rather
-					// than presenting an empty timeline; this is request-driven, not a
-					// midnight-wide background job.
-					const progressKey = `torikago:recommended:${recommendationCacheVersion}:candidate-progress:${me.id}`;
-					const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
-					// Always inspect the newest window, then resume older per-user windows only
-					// until there is enough content to make the initial view scrollable.
-					// Candidate ranges remain bounded; candidate IDs are combined before one
-					// indexed hydration query instead of repeating the expensive joins.
-					// Keep a small part of the preceding snapshot that has not actually been
-					// delivered yet. Refresh used to throw these candidates away, rescan the
-					// same newest window, and rapidly exhaust quiet accounts.
-					const canReusePrevious = previousSnapshotCompatible;
-					const reusablePreviousIds = canReusePrevious ? previousResultIds.slice(0, Math.min(settings.resultLimit, ps.limit * 4)) : [];
-					// The newest window finds newly arrived notes. The resumed window may cover
-					// several inexpensive Redis-ID ranges so sparse/minimum-score-filtered pools
-					// still produce a scrollable page without one joined query per range.
-					const windows = [{ cursor: 0, count: 1 }, { cursor: savedCursor, count: 3 }]
-						.filter((window, index, items) => items.findIndex(other => other.cursor === window.cursor) === index);
-					const selectedTargets = new Set<string>();
-					const selectedAuthorCounts = new Map<string, number>();
-					let nextCursor = savedCursor;
-					// A new snapshot must always start from the Home head. Persisting this
-					// offset across refreshes skipped the entire bounded Home cache after a
-					// single refresh for readers with fewer followed notes.
-					let nextPersonalizedCursor = 0;
-					resultIds = reusablePreviousIds;
-					if (resultIds.length > 0) {
-						const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
-						await requestSeen.prime(reusableNotes.map(note => this.targetId(note)));
-						const reusableById = new Map(reusableNotes.map(note => [note.id, note]));
-						resultIds = resultIds.filter(id => {
-							const note = reusableById.get(id);
-							return note != null && !requestSeen.has(this.targetId(note));
-						});
-						for (const note of reusableNotes.filter(note => resultIds.includes(note.id))) {
+				// Generate a fresh snapshot rather than presenting an empty timeline, reusing the
+				// undelivered part of the preceding one when it is compatible. This is request-driven,
+				// not a background job.
+				const progressKey = `torikago:recommended:${recommendationCacheVersion}:candidate-progress:${me.id}`;
+				const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
+				// Always inspect the newest window, then resume older per-user windows only
+				// until there is enough content to make the initial view scrollable.
+				// Candidate ranges remain bounded; candidate IDs are combined before one
+				// indexed hydration query instead of repeating the expensive joins.
+				// Keep a small part of the preceding snapshot that has not actually been
+				// delivered yet. Refresh used to throw these candidates away, rescan the
+				// same newest window, and rapidly exhaust quiet accounts.
+				const canReusePrevious = previousSnapshotCompatible;
+				const reusablePreviousIds = canReusePrevious ? previousResultIds.slice(0, Math.min(settings.resultLimit, ps.limit * 4)) : [];
+				// The newest window finds newly arrived notes. The resumed window may cover
+				// several inexpensive Redis-ID ranges so sparse/minimum-score-filtered pools
+				// still produce a scrollable page without one joined query per range.
+				const windows = [{ cursor: 0, count: 1 }, { cursor: savedCursor, count: 3 }]
+					.filter((window, index, items) => items.findIndex(other => other.cursor === window.cursor) === index);
+				const selectedTargets = new Set<string>();
+				const selectedAuthorCounts = new Map<string, number>();
+				let nextCursor = savedCursor;
+				// A new snapshot must always start from the Home head. Persisting this
+				// offset across refreshes skipped the entire bounded Home cache after a
+				// single refresh for readers with fewer followed notes.
+				let nextPersonalizedCursor = 0;
+				resultIds = reusablePreviousIds;
+				if (resultIds.length > 0) {
+					const reusableNotes = await this.notesRepository.find({ select: { id: true, userId: true, renoteId: true, text: true, cw: true }, where: { id: In(resultIds) } });
+					await requestSeen.prime(reusableNotes.map(note => this.targetId(note)));
+					const reusableById = new Map(reusableNotes.map(note => [note.id, note]));
+					resultIds = resultIds.filter(id => {
+						const note = reusableById.get(id);
+						return note != null && !requestSeen.has(this.targetId(note));
+					});
+					for (const note of reusableNotes.filter(note => resultIds.includes(note.id))) {
+						selectedTargets.add(note.id);
+						selectedAuthorCounts.set(note.userId, (selectedAuthorCounts.get(note.userId) ?? 0) + 1);
+					}
+				}
+				for (const [cursorIndex, window] of windows.entries()) {
+					const { cursor, count } = window;
+					const remaining = settings.resultLimit - resultIds.length;
+					if (remaining <= 0 || resultIds.length >= Math.min(15, settings.resultLimit)) break;
+					// Home and affinity queries are the expensive part for accounts with
+					// many followings. Fetch them once; the second pass only backfills from the
+					// shared candidate pool. Further personalised pages are loaded on scroll.
+					const includePersonalizedSources = cursorIndex === 0;
+					const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor, count);
+					if (includePersonalizedSources) nextPersonalizedCursor += this.personalizedCursorAdvance(settings, remaining);
+					for (const id of extraIds) {
+						if (!selectedTargets.has(id)) resultIds.push(id);
+					}
+					if (extraIds.length > 0) {
+						const selectedNotes = await this.notesRepository.find({ select: { id: true, userId: true }, where: { id: In(resultIds) } });
+						selectedTargets.clear();
+						selectedAuthorCounts.clear();
+						for (const note of selectedNotes) {
 							selectedTargets.add(note.id);
 							selectedAuthorCounts.set(note.userId, (selectedAuthorCounts.get(note.userId) ?? 0) + 1);
 						}
 					}
-					for (const [cursorIndex, window] of windows.entries()) {
-						const { cursor, count } = window;
-						const remaining = settings.resultLimit - resultIds.length;
-						if (remaining <= 0 || resultIds.length >= Math.min(15, settings.resultLimit)) break;
-						// Home and affinity queries are the expensive part for accounts with
-						// many followings. Fetch them once; the second pass only backfills from the
-						// shared candidate pool. Further personalised pages are loaded on scroll.
-						const includePersonalizedSources = cursorIndex === 0;
-						const extraIds = await this.buildRecommendation(me, settings, selectedTargets, cursor * settings.candidateScanLimit, remaining, `${ps.snapshotId}:${cursor}`, selectedAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, nextPersonalizedCursor, count);
-						if (includePersonalizedSources) nextPersonalizedCursor += this.personalizedCursorAdvance(settings, remaining);
-						for (const id of extraIds) {
-							if (!selectedTargets.has(id)) resultIds.push(id);
-						}
-						if (extraIds.length > 0) {
-							const selectedNotes = await this.notesRepository.find({ select: { id: true, userId: true }, where: { id: In(resultIds) } });
-							selectedTargets.clear();
-							selectedAuthorCounts.clear();
-							for (const note of selectedNotes) {
-								selectedTargets.add(note.id);
-								selectedAuthorCounts.set(note.userId, (selectedAuthorCounts.get(note.userId) ?? 0) + 1);
-							}
-						}
-						if (cursor > 0) nextCursor = cursor + count;
-					}
-					resultIds = await this.spreadSnapshotAuthors(resultIds, ps.snapshotId, settings);
-					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
-					if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
-					pipeline.expire(resultKey, settings.snapshotHours * 3600);
-					// The marker deliberately exists even for an empty list. Otherwise an
-					// empty result is mistaken for a cache miss and rebuilt on every reload.
-					pipeline.set(snapshotReadyKey, '1', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:candidate-cursor`, String(nextCursor), 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:personalized-cursor`, String(nextPersonalizedCursor), 'EX', settings.snapshotHours * 3600);
-					pipeline.set(progressKey, String(nextCursor), 'EX', settings.seenDays * 86400);
-					pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
-					pipeline.set(`${resultKey}:with-renotes`, ps.withRenotes ? '1' : '0', 'EX', settings.snapshotHours * 3600);
-					pipeline.set(latestSnapshotKey, ps.snapshotId, 'EX', settings.snapshotHours * 3600);
-					await pipeline.exec();
+					if (cursor > 0) nextCursor = cursor + count;
 				}
+				resultIds = await this.spreadSnapshotAuthors(resultIds, ps.snapshotId, settings);
+				const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
+				if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
+				pipeline.expire(resultKey, settings.snapshotHours * 3600);
+				// The marker deliberately exists even for an empty list. Otherwise an
+				// empty result is mistaken for a cache miss and rebuilt on every reload.
+				pipeline.set(snapshotReadyKey, '1', 'EX', settings.snapshotHours * 3600);
+				pipeline.set(`${resultKey}:candidate-cursor`, String(nextCursor), 'EX', settings.snapshotHours * 3600);
+				pipeline.set(`${resultKey}:personalized-cursor`, String(nextPersonalizedCursor), 'EX', settings.snapshotHours * 3600);
+				pipeline.set(progressKey, String(nextCursor), 'EX', settings.seenDays * 86400);
+				pipeline.set(`${resultKey}:version`, (await this.redisForTimelines.get('torikago:recommended:version')) ?? '0', 'EX', settings.snapshotHours * 3600);
+				pipeline.set(`${resultKey}:relationship-version`, relationshipVersion, 'EX', settings.snapshotHours * 3600);
+				pipeline.set(`${resultKey}:with-renotes`, ps.withRenotes ? '1' : '0', 'EX', settings.snapshotHours * 3600);
+				pipeline.set(latestSnapshotKey, ps.snapshotId, 'EX', settings.snapshotHours * 3600);
+				await pipeline.exec();
 			}
 
 			// Cache version v8 only creates snapshots after target-note de-duplication,
@@ -414,11 +392,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const claimedTargetIds = new Set(await this.claimUnseen(me.id, resultKey, ordered.map(note => this.targetId(note)), settings));
 			return await this.noteEntityService.packMany(ordered.filter(note => claimedTargetIds.has(this.targetId(note))), me);
 		});
-	}
-
-	private isMidnightProtectionWindow(): boolean {
-		const now = new Date();
-		return now.getHours() === 0 && now.getMinutes() < 1;
 	}
 
 	private settings(): Settings {
