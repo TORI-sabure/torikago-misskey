@@ -16,6 +16,19 @@ import { QueryService } from '@/core/QueryService.js';
 import { NoteEntityService } from '@/core/entities/NoteEntityService.js';
 import { IdService } from '@/core/IdService.js';
 import { shouldHideNoteByTime } from '@/misc/should-hide-note-by-time.js';
+import {
+	REACTION_RECENT_DAYS,
+	REACTION_ROW_LIMIT,
+	REACTION_WINDOW_DAYS,
+	RECENT_REACTION_WEIGHT,
+	SERVER_WINDOW_SIZE,
+	aggregateReactionRows,
+	computeServerBonuses,
+	selectBySource,
+	serverWindowMax,
+	spreadAuthors as spreadAuthorsWithRandom,
+} from '@/misc/recommended-server-scoring.js';
+import type { SelectableItem, ServerWindow } from '@/misc/recommended-server-scoring.js';
 
 type Settings = {
 	candidatePoolLimit: number;
@@ -41,6 +54,12 @@ type Settings = {
 	botPenalty: number;
 	negativePenalty: number;
 	minimumScore: number;
+	// Bonus for servers the reader reacts to far more often than their share of the candidates.
+	serverAffinityBonus: number;
+	// Bonus for servers that are rare among the candidates of one generation.
+	serverDiversityBonus: number;
+	// Soft cap (% of one generation / one page) for notes from the same remote server. 100 disables it.
+	maxServerPercent: number;
 	fallbackMaxAgeDays: number;
 	forcedLimit: number;
 	forcedAccounts: string[];
@@ -75,6 +94,9 @@ const defaults: Settings = {
 	botPenalty: 3,
 	negativePenalty: 8,
 	minimumScore: 0,
+	serverAffinityBonus: 4,
+	serverDiversityBonus: 2,
+	maxServerPercent: 40,
 	fallbackMaxAgeDays: 90,
 	forcedLimit: 3,
 	forcedAccounts: [],
@@ -93,6 +115,10 @@ type RecommendationContext = {
 	reactionAffinity: Array<[string, number]>;
 	favoriteAffinity: Array<[string, number]>;
 	renoteAffinity: Array<[string, number]>;
+	// Remote servers the reader reacts to, with recency-weighted reaction counts (descending).
+	serverAffinity: Array<[string, number]>;
+	// Sum of the weights over every remote server, including those not listed above.
+	serverAffinityTotal: number;
 };
 
 export const meta = {
@@ -278,7 +304,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 						}
 						if (cursor > 0) nextCursor = cursor + count;
 					}
-					resultIds = await this.spreadSnapshotAuthors(resultIds, ps.snapshotId);
+					resultIds = await this.spreadSnapshotAuthors(resultIds, ps.snapshotId, settings);
 					const pipeline = this.redisClient.pipeline().del(resultKey, `${resultKey}:seen`, snapshotReadyKey);
 					if (resultIds.length > 0) pipeline.rpush(resultKey, ...resultIds);
 					pipeline.expire(resultKey, settings.snapshotHours * 3600);
@@ -322,7 +348,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 					const includePersonalizedSources = attempt === 0;
 					const candidateWindowCount = attempt === 0 ? 1 : 3;
 					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor, candidateWindowCount);
-					const extraIds = await this.spreadSnapshotAuthors(builtExtraIds, `${ps.snapshotId}:page:${cursor}`, resultIds.at(-1));
+					const extraIds = await this.spreadSnapshotAuthors(builtExtraIds, `${ps.snapshotId}:page:${cursor}`, settings, resultIds.slice(-(SERVER_WINDOW_SIZE - 1)));
 					// Multiple widgets or Deck columns may share this snapshot. Append only
 					// when its length is unchanged, so concurrent end-of-list requests can
 					// never append the same ranking batch twice.
@@ -406,7 +432,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			reactionAffinityPercent: typeof raw.reactionAffinityPercent === 'number' && Number.isFinite(raw.reactionAffinityPercent) ? Math.min(100, Math.max(0, Math.floor(raw.reactionAffinityPercent))) : legacyReactionAffinityPercent, followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
 			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), followingBonus: integer('followingBonus', 0, 100), reactionAffinityBonus: integer('reactionAffinityBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
-			negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
+			negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), serverAffinityBonus: integer('serverAffinityBonus', 0, 100), serverDiversityBonus: integer('serverDiversityBonus', 0, 100), maxServerPercent: integer('maxServerPercent', 10, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
 			forcedAccounts: strings('forcedAccounts'), negativeWords: strings('negativeWords'), boostWords: strings('boostWords'), negativeAccounts: strings('negativeAccounts'),
 		};
 	}
@@ -454,7 +480,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// written by every followed account.
 		const sourceNoteLimit = Math.min(settings.candidateScanLimit, Math.max(60, resultLimit * 3));
 		const directFetchLimit = Math.min(120, Math.max(sourceNoteLimit, resultLimit * 2));
-		const prioritizedReactionAffinityIds = reactionAffinityIds.slice(0, Math.min(200, Math.max(80, settings.candidateScanLimit * 2)));
+		// Followed accounts already reach the shortlist through the Home timeline below, so
+		// spend this limited fetch budget on accounts the reader reacts to but does not
+		// follow. Their affinity still counts for scoring (the maps above keep every entry).
+		const prioritizedReactionAffinityIds = reactionAffinityIds.filter(id => !directSet.has(id)).slice(0, Math.min(200, Math.max(80, settings.candidateScanLimit * 2)));
 		const reactionAffinityFetchLimit = Math.min(140, Math.max(sourceNoteLimit, resultLimit * 2));
 		// Personalised sources have their own snapshot-local cursor. Tying this offset
 		// to the shared candidate pool used to skip large ranges of Home and
@@ -564,11 +593,23 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			const displayId = plainRenote ? note.renoteId! : note.id;
 			const isFollowedAuthor = directSet.has(rankingNote.userId);
 			const quality = settings.reactionAffinityBonus * Math.log1p(reactionAffinity.get(note.userId) ?? 0) + 6 * Math.log1p(renoteAffinity.get(note.userId) ?? 0) + 4 * Math.log1p(favoriteAffinity.get(note.userId) ?? 0) + settings.reactionBonus * Math.log1p(reactions) + 1.5 * Math.log1p(rankingNote.renoteCount) + (rankingNote.visibility === 'public' ? settings.publicBonus : 0) + (rankingNote.user?.host == null ? settings.localUserBonus : 0) + (isFollowedAuthor ? settings.followingBonus : 0) + (boosted ? settings.boostBonus : 0) - (rankingNote.fileIds.some(id => sensitiveFileIds.has(id)) ? settings.sensitivePenalty : 0) - (rankingNote.user?.isBot ? settings.botPenalty : 0) - (negative ? settings.negativePenalty : 0);
-			return [{ id: note.id, displayId, targetId: this.targetId(note), authorId: rankingNote.userId, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 }];
+			return [{ id: note.id, displayId, targetId: this.targetId(note), authorId: rankingNote.userId, host: rankingNote.userHost, source, forced: isForced, quality, freshness, balanced: quality + freshness * 4 }];
 		});
 		// A plain renote and its original note represent one thing to the reader.
 		// Keep the stronger candidate before splitting forced and regular slots.
-		const uniqueScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
+		const dedupedScored = [...scored].sort((a, b) => b.quality - a.quality).filter((item, index, items) => items.findIndex(other => other.targetId === item.targetId) === index);
+		// Server-aware bonuses depend on the whole candidate set of this generation, so they are
+		// applied after the per-note score: servers the reader reacts to far more than their share of
+		// the candidates, and servers that are rare among them, move up. A server that dominates the
+		// candidates (a busy relay or the biggest instance) gets almost nothing, which keeps the
+		// timeline from being filled by it without having to throw its notes away.
+		const serverBonuses = computeServerBonuses(dedupedScored.map(item => item.host), { hosts: context.serverAffinity, total: context.serverAffinityTotal }, settings);
+		const uniqueScored = serverBonuses.size === 0 ? dedupedScored : dedupedScored
+			.map(item => {
+				const bonus = item.host == null ? 0 : serverBonuses.get(item.host) ?? 0;
+				return bonus === 0 ? item : { ...item, quality: item.quality + bonus, balanced: item.balanced + bonus };
+			})
+			.sort((a, b) => b.quality - a.quality);
 		const selectedAuthorCounts = new Map(existingAuthorCounts);
 		const forced: typeof uniqueScored = [];
 		for (const item of uniqueScored) {
@@ -579,8 +620,11 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		}
 		const forcedTargets = new Set(forced.map(item => item.targetId));
 		// Forced entries bypass the threshold, but every ordinary source uses the
-		// configured minimum score consistently, including followed accounts.
-		const eligible = uniqueScored.filter(item => item.forced || item.quality >= settings.minimumScore);
+		// configured minimum score consistently, including followed accounts. The threshold is
+		// judged on the score before the server bonuses: those only reorder candidates, so they
+		// must neither admit a note the rules rejected nor offset a negative-rule penalty.
+		const passesMinimumScore = new Set(dedupedScored.filter(item => item.forced || item.quality >= settings.minimumScore).map(item => item.targetId));
+		const eligible = uniqueScored.filter(item => passesMinimumScore.has(item.targetId));
 		const selectionSettings = { ...settings, resultLimit: Math.max(0, resultLimit - forced.length) };
 		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed, selectedAuthorCounts);
 		for (const item of selected) {
@@ -626,7 +670,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		if (cached != null) {
 			try {
 				const context = JSON.parse(cached) as RecommendationContext;
-				if (Array.isArray(context.followingIds) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity)) return context;
+				// An entry written before the server affinity fields existed is rebuilt below.
+				if (Array.isArray(context.followingIds) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity) && Array.isArray(context.serverAffinity) && typeof context.serverAffinityTotal === 'number') return context;
 			} catch {
 				// Rebuild a malformed or obsolete cache entry.
 			}
@@ -636,19 +681,38 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
 		// Interest discovery is intentionally independent from the follow graph.
 		// It stays bounded and does not traverse anyone else's follow relationships.
+		// One scan of the reader's recent reactions is grouped per (author, server). An author has
+		// exactly one server, so the per-server totals are summed from these rows afterwards instead
+		// of scanning again. The window is the time of the reaction (not the age of the reacted note,
+		// which missed late reactions to older notes) and the latest weeks are weighted more heavily.
+		const reactionNow = Date.now();
 		const reactionRows = await this.noteReactionsRepository.createQueryBuilder('reaction')
 			.innerJoin('reaction.note', 'target')
 			.select('target.userId', 'userId')
-			.addSelect('COUNT(*)', 'count')
+			.addSelect('target.userHost', 'userHost')
+			.addSelect('COUNT(*)', 'total')
+			.addSelect('COUNT(*) FILTER (WHERE reaction.id >= :reactionRecentId)', 'recent')
+			.addSelect(`COUNT(*) + ${RECENT_REACTION_WEIGHT} * COUNT(*) FILTER (WHERE reaction.id >= :reactionRecentId)`, 'weight')
 			.where('reaction.userId = :meId', { meId: me.id })
-			.andWhere('target.id >= :reactionOldestId', { reactionOldestId: this.idService.gen(Date.now() - 90 * 86400000) })
-			.andWhere('target.userId != :meId', { meId: me.id })
+			.andWhere('reaction.id >= :reactionOldestId', { reactionOldestId: this.idService.gen(reactionNow - REACTION_WINDOW_DAYS * 86400000) })
+			.andWhere('target.userId != :meId')
+			.setParameter('reactionRecentId', this.idService.gen(reactionNow - REACTION_RECENT_DAYS * 86400000))
 			.groupBy('target.userId')
-			.orderBy('COUNT(*)', 'DESC')
-			.limit(reactionInterestLimit)
-			.getRawMany<{ userId: string; count: string }>();
+			.addGroupBy('target.userHost')
+			.orderBy('weight', 'DESC')
+			.limit(REACTION_ROW_LIMIT)
+			.getRawMany<{ userId: string; userHost: string | null; total: string; recent: string }>();
+		const reactionAggregate = aggregateReactionRows(reactionRows.map(row => ({ userId: row.userId, userHost: row.userHost, total: Number(row.total), recent: Number(row.recent) })));
+		// Keep the strongest authors overall for scoring, plus the strongest ones the reader does not
+		// follow yet: those are the ones whose notes are fetched directly, and followed accounts
+		// would otherwise crowd them out of a fixed-size list.
+		const followingSet = new Set(followingIds);
+		const reactionAffinity = [...new Map([
+			...reactionAggregate.authors.slice(0, reactionInterestLimit),
+			...reactionAggregate.authors.filter(([userId]) => !followingSet.has(userId)).slice(0, reactionInterestLimit),
+		])].sort((a, b) => b[1] - a[1]);
 		// Affinity queries stay bounded even though the retrieval pool is wider.
-		const authorIds = [...new Set([me.id, ...followingIds.slice(0, 500), ...reactionRows.slice(0, 80).map(row => row.userId)])];
+		const authorIds = [...new Set([me.id, ...followingIds.slice(0, 500), ...reactionAggregate.authors.slice(0, 80).map(([userId]) => userId)])];
 		const affinityOldestId = this.idService.gen(Date.now() - 90 * 86400000);
 		const [favoriteRows, renoteRows] = authorIds.length === 0 ? [[], []] : await Promise.all([
 			this.noteFavoritesRepository.createQueryBuilder('favorite').innerJoin('favorite.note', 'target').select('target.userId', 'userId').addSelect('COUNT(*)', 'count').where('favorite.userId = :meId', { meId: me.id }).andWhere('target.id >= :affinityOldestId', { affinityOldestId }).andWhere('target.userId IN (:...authorIds)', { authorIds }).groupBy('target.userId').getRawMany<{ userId: string; count: string }>(),
@@ -656,39 +720,19 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		]);
 		const context: RecommendationContext = {
 			followingIds,
-			reactionAffinity: reactionRows.map(row => [row.userId, Number(row.count)]),
+			reactionAffinity,
 			favoriteAffinity: favoriteRows.map(row => [row.userId, Number(row.count)]),
 			renoteAffinity: renoteRows.map(row => [row.userId, Number(row.count)]),
+			serverAffinity: reactionAggregate.hosts,
+			serverAffinityTotal: reactionAggregate.hostTotal,
 		};
 		await this.redisClient.set(key, JSON.stringify(context), 'EX', 900);
 		return context;
 	}
 
-	private selectSources<T extends { id: string; source: string; authorId: string; targetId: string; quality: number }>(items: T[], settings: Settings, seed: string, existingAuthorCounts = new Map<string, number>()): T[] {
-		const bySource = new Map(['following', 'reactionAffinity', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
-		const percentages: Array<[string, number]> = [['reactionAffinity', settings.reactionAffinityPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
-		if (percentages.every(([, percent]) => percent === 0)) percentages[0]![1] = 100;
-		const out: T[] = []; const counts = new Map(existingAuthorCounts); const targets = new Set<string>();
-		for (let i = 0; i < settings.resultLimit; i++) {
-			const wanted = [...percentages].sort((a, b) => ((out.filter(item => item.source === a[0]).length + 1) / Math.max(a[1], 1)) - ((out.filter(item => item.source === b[0]).length + 1) / Math.max(b[1], 1)))[0]![0];
-			const sources = [wanted, ...percentages.map(x => x[0]).filter(source => source !== wanted)];
-			let picked: T | undefined;
-			for (const source of sources) {
-				const list = bySource.get(source) ?? [];
-				const eligible = list.filter(item => !targets.has(item.targetId) && (counts.get(item.authorId) ?? 0) < settings.maxNotesPerAuthor);
-				if (eligible.length > 0) {
-					// Sampling from the stronger portion rather than always taking rank 1
-					// prevents every snapshot from having the same score-heavy head.
-					const windowSize = Math.max(1, Math.ceil(eligible.length * 0.6));
-					picked = eligible[Math.floor(this.seededRandom(`${seed}:source:${source}:${i}`) * windowSize)]!;
-					list.splice(list.indexOf(picked), 1);
-					break;
-				}
-			}
-			if (picked == null) break;
-			out.push(picked); targets.add(picked.targetId); counts.set(picked.authorId, (counts.get(picked.authorId) ?? 0) + 1);
-		}
-		return out;
+	// Source ratios, per-author and per-server limits. The loop lives in a pure module so it can be unit tested.
+	private selectSources<T extends SelectableItem>(items: T[], settings: Settings, seed: string, existingAuthorCounts = new Map<string, number>()): T[] {
+		return selectBySource(items, settings, seed, value => this.seededRandom(value), existingAuthorCounts);
 	}
 
 	private interleave<T extends { id: string; quality: number; freshness: number; balanced: number }>(items: T[], settings: Settings, seed: string): T[] {
@@ -739,31 +783,24 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		return (hash >>> 0) / 0x100000000;
 	}
 
-	private spreadAuthors<T extends { id: string; authorId: string }>(items: T[], seed: string, initialPreviousAuthorId: string | null = null): T[] {
-		const remaining = [...items];
-		const output: T[] = [];
-		let previousAuthorId: string | null = initialPreviousAuthorId;
-		while (remaining.length > 0) {
-			let candidates = remaining.filter(item => item.authorId !== previousAuthorId);
-			if (candidates.length === 0) candidates = remaining;
-			// Keep the score/category order mostly intact while choosing among the first
-			// few alternatives. This separates repeated authors without flattening the
-			// recommendation ranking into a fully random list.
-			const window = candidates.slice(0, Math.min(4, candidates.length));
-			const picked = window[Math.floor(this.seededRandom(`${seed}:author:${output.length}`) * window.length)]!;
-			output.push(picked);
-			remaining.splice(remaining.indexOf(picked), 1);
-			previousAuthorId = picked.authorId;
-		}
-		return output;
+	private spreadAuthors<T extends { id: string; authorId: string; host?: string | null }>(items: T[], seed: string, initialPreviousAuthorId: string | null = null, serverWindow?: ServerWindow): T[] {
+		return spreadAuthorsWithRandom(items, seed, value => this.seededRandom(value), initialPreviousAuthorId, serverWindow);
 	}
 
-	private async spreadSnapshotAuthors(ids: string[], seed: string, previousId?: string): Promise<string[]> {
+	// Orders a freshly built (or appended) part of the snapshot: the same author never appears twice
+	// in a row, and no remote server takes more than its share of any page-sized run of notes.
+	// previousIds is the tail of the snapshot this part is appended to, so runs stay continuous.
+	private async spreadSnapshotAuthors(ids: string[], seed: string, settings: Settings, previousIds: string[] = []): Promise<string[]> {
 		if (ids.length < 2) return ids;
-		const lookupIds = previousId == null ? ids : [previousId, ...ids];
-		const notes = await this.notesRepository.find({ select: { id: true, userId: true }, where: { id: In(lookupIds) } });
-		const authorById = new Map(notes.map(note => [note.id, note.userId]));
-		return this.spreadAuthors(ids.map(id => ({ id, authorId: authorById.get(id) ?? id })), seed, previousId == null ? null : authorById.get(previousId) ?? null).map(item => item.id);
+		const previousId = previousIds.at(-1);
+		const notes = await this.notesRepository.find({ select: { id: true, userId: true, userHost: true }, where: { id: In([...previousIds, ...ids]) } });
+		const noteById = new Map(notes.map(note => [note.id, note]));
+		return this.spreadAuthors(
+			ids.map(id => ({ id, authorId: noteById.get(id)?.userId ?? id, host: noteById.get(id)?.userHost ?? null })),
+			seed,
+			previousId == null ? null : noteById.get(previousId)?.userId ?? null,
+			{ max: serverWindowMax(settings.maxServerPercent), recentHosts: previousIds.map(id => noteById.get(id)?.userHost ?? null) },
+		).map(item => item.id);
 	}
 
 	private isPastVisibilityDeadline(note: { id: string; user?: { makeNotesHiddenBefore?: number | null } | null }): boolean {
