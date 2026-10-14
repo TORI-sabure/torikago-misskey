@@ -18,6 +18,7 @@ import {
 	serverWindowMax,
 	spreadAuthors,
 } from '@/misc/recommended-server-scoring.js';
+import { isContextStale } from '@/misc/recommended-server-scoring.js';
 import type { SelectableItem } from '@/misc/recommended-server-scoring.js';
 
 // recommended-timeline.ts の seededRandom と同じ (FNV-1a)。テストでは同じ乱数を使い、結果を決定的にする
@@ -390,5 +391,15 @@ describe('misc:recommended-server-scoring spreadAuthors', () => {
 		const items: SpreadItem[] = Array.from({ length: 60 }, (_, i) => ({ id: `n${i}`, authorId: `a${i % 20}`, host: i % 4 === 0 ? 'misskey.io' : `s${i % 5}.example` }));
 		const spread = spreadAuthors(items, 'seed', seededRandom, null, { max: 4 });
 		for (let i = 1; i < spread.length; i++) expect(spread[i]!.authorId).not.toBe(spread[i - 1]!.authorId);
+	});
+});
+
+describe('misc:recommended-server-scoring isContextStale', () => {
+	test('fresh within the soft TTL, stale after it', () => {
+		expect(isContextStale(1000, 1000 + 299_999)).toBe(false);
+		expect(isContextStale(1000, 1000 + 300_000)).toBe(true);
+	});
+	test('missing timestamp is stale', () => {
+		expect(isContextStale(undefined, 1000)).toBe(true);
 	});
 });

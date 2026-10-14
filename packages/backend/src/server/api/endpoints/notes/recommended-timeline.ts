@@ -120,6 +120,7 @@ type RecommendationContext = {
 	serverAffinity: Array<[string, number]>;
 	// Sum of the weights over every remote server, including those not listed above.
 	serverAffinityTotal: number;
+	builtAt?: number;
 };
 
 export const meta = {
@@ -357,11 +358,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				where: { id: In(pageIds) },
 				relations: { user: true, reply: { user: true }, renote: { user: true } },
 			});
-			const files = await this.driveFilesRepository.find({
+			// Sensitive files only matter when the client asked to hide them.
+			const pageFileIds = ps.withSensitive ? [] : [...new Set(notes.flatMap(note => [...note.fileIds, ...(note.renote?.fileIds ?? [])]))];
+			const files = pageFileIds.length === 0 ? [] : await this.driveFilesRepository.find({
 				select: { id: true, isSensitive: true },
-				where: { id: In([...new Set(notes.flatMap(note => [...note.fileIds, ...(note.renote?.fileIds ?? [])]))]) },
+				where: { id: In(pageFileIds), isSensitive: true },
 			});
-			const sensitiveFileIds = new Set(files.filter(file => file.isSensitive).map(file => file.id));
+			const sensitiveFileIds = new Set(files.map(file => file.id));
 			const noteMap = new Map(notes.map(note => [note.id, note]));
 			// Only the targets on this page need a seen check, so query just those instead of
 			// downloading the whole snapshot-local and cross-snapshot history.
@@ -445,9 +448,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const renoteAffinity = new Map(context.renoteAffinity);
 		const directSet = new Set(directIds);
 		const reactionAffinitySet = new Set(reactionAffinityIds);
-		const createVisibleQuery = (limit = settings.candidateScanLimit) => {
+		// The caller bounds the rows with `note.id = ANY(:ids)` and sorts in JS, so no
+		// ORDER BY / LIMIT here. take() on a joined query makes TypeORM run an extra
+		// DISTINCT-id pre-query over all five joins, which doubled the hydration cost.
+		const createVisibleQuery = () => {
 			const query = this.notesRepository.createQueryBuilder('note').innerJoinAndSelect('note.user', 'user').leftJoinAndSelect('note.reply', 'reply').leftJoinAndSelect('reply.user', 'replyUser').leftJoinAndSelect('note.renote', 'renote').leftJoinAndSelect('renote.user', 'renoteUser')
-				.andWhere('note.channelId IS NULL').orderBy('note.id', 'DESC').take(limit);
+				.andWhere('note.channelId IS NULL');
 			this.queryService.generateVisibilityQuery(query, me);
 			this.queryService.generateBaseNoteFilteringQuery(query, me);
 			this.queryService.generateMutedUserRenotesQueryForNotes(query, me);
@@ -524,7 +530,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		await seen.prime(rawSourceIds);
 		const sourceIds = rawSourceIds.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const hydrationIds = [...new Set([...candidateIds, ...sourceIds])];
-		const notes = hydrationIds.length === 0 ? [] : await createVisibleQuery(hydrationIds.length)
+		const notes = hydrationIds.length === 0 ? [] : await createVisibleQuery()
 			.andWhere('note.id = ANY(:hydrationIds)', { hydrationIds })
 			.getMany();
 		const sourceTarget = (percent: number) => {
@@ -536,7 +542,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// A plain renote is displayed as its original, so include the original's
 		// files when evaluating the sensitive-file penalty as well.
 		const fileIds = [...new Set(notes.flatMap(note => [...note.fileIds, ...(note.renote?.fileIds ?? [])]))];
-		const sensitiveFileIds = new Set((await this.driveFilesRepository.find({ select: { id: true }, where: { id: In(fileIds), isSensitive: true } })).map(file => file.id));
+		const sensitiveFileIds = new Set(fileIds.length === 0 ? [] : (await this.driveFilesRepository.find({ select: { id: true }, where: { id: In(fileIds), isSensitive: true } })).map(file => file.id));
 		const forcedWords = (this.serverSettings.recommendedTimelineForcedWords ?? []).map(word => word.toLocaleLowerCase());
 		const now = Date.now();
 		const normalizedAccounts = (accounts: string[]) => new Set(accounts.map(x => x.trim().replace(/^@/, '').toLocaleLowerCase()).filter(Boolean));
@@ -655,12 +661,28 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			try {
 				const context = JSON.parse(cached) as RecommendationContext;
 				// An entry written before the server affinity fields existed is rebuilt below.
-				if (Array.isArray(context.followingIds) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity) && Array.isArray(context.serverAffinity) && typeof context.serverAffinityTotal === 'number') return context;
+				if (Array.isArray(context.followingIds) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity) && Array.isArray(context.serverAffinity) && typeof context.serverAffinityTotal === 'number') {
+					if (isContextStale(context.builtAt, Date.now())) {
+						// Serve the stale value now and let exactly one request rebuild it, so
+						// nobody waits for the reaction scan once the soft TTL has passed.
+						// Follow/unfollow still deletes the key, which forces a synchronous rebuild.
+						const lockKey = `${key}:refresh`;
+						if (await this.redisClient.set(lockKey, '1', 'EX', 60, 'NX') === 'OK') {
+							this.buildRecommendationContext(me, settings, key)
+								.catch(() => {})
+								.finally(() => this.redisClient.del(lockKey).catch(() => {}));
+						}
+					}
+					return context;
+				}
 			} catch {
 				// Rebuild a malformed or obsolete cache entry.
 			}
 		}
+		return await this.buildRecommendationContext(me, settings, key);
+	}
 
+	private async buildRecommendationContext(me: MiLocalUser, settings: Settings, key: string): Promise<RecommendationContext> {
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
 		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
 		// Interest discovery is intentionally independent from the follow graph.
@@ -709,8 +731,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			renoteAffinity: renoteRows.map(row => [row.userId, Number(row.count)]),
 			serverAffinity: reactionAggregate.hosts,
 			serverAffinityTotal: reactionAggregate.hostTotal,
+			builtAt: Date.now(),
 		};
-		await this.redisClient.set(key, JSON.stringify(context), 'EX', 900);
+		// The hard TTL is longer than the soft one so a stale value is available while it is rebuilt.
+		await this.redisClient.set(key, JSON.stringify(context), 'EX', 1800);
 		return context;
 	}
 

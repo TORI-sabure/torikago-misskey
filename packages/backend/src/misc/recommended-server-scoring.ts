@@ -277,3 +277,12 @@ export function spreadAuthors<T extends { id: string; authorId: string; host?: s
 	}
 	return output;
 }
+
+// Per-user recommendation context is served stale-while-revalidate: within the soft TTL it is used as is,
+// after it the stale value is still returned and one request rebuilds it in the background.
+export const CONTEXT_SOFT_TTL_MS = 5 * 60 * 1000;
+
+export function isContextStale(builtAt: number | undefined, now: number, softTtlMs = CONTEXT_SOFT_TTL_MS): boolean {
+	// An entry without a timestamp predates this logic; treat it as stale so it gets refreshed.
+	return typeof builtAt !== 'number' || now - builtAt >= softTtlMs;
+}
