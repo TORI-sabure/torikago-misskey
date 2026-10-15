@@ -88,6 +88,7 @@ import { DI } from '@/di.js';
 import { globalEvents, useGlobalEvent } from '@/events.js';
 import { isSeparatorNeeded, getSeparatorInfo } from '@/utility/timeline-date-separate.js';
 import { Paginator } from '@/utility/paginator.js';
+import { clearRecommendedTimelineCache, getRecommendedTimelineCache, recommendedTimelineCacheKey, setRecommendedTimelineCache } from '@/utility/recommended-timeline-cache.js';
 
 const recommendedTexts: Record<string, { newAvailable: string }> = {
 	'en-US': { newAvailable: 'New recommendations are available' },
@@ -127,8 +128,16 @@ provide(DI.inChannel, computed(() => props.src === 'channel' ? props.channel ?? 
 let paginator: IPaginator<Misskey.entities.Note>;
 let skipRecommendedParameterReload = false;
 let timelineReloadPromise: Promise<void> | null = null;
+// Leaving the timeline (tab switch, browser back) must not trigger a new recommendation run.
+// The displayed notes and their snapshot are kept in memory and restored on the next mount;
+// only an explicit reload (button, pull to refresh, page reload) builds a new snapshot.
+// The key follows the filters, so a changed filter never stores its view under the old key.
+const recommendedCacheKey = computed(() => props.src === 'recommended'
+	? recommendedTimelineCacheKey({ userId: $i?.id, withRenotes: props.withRenotes, onlyFiles: props.onlyFiles, withSensitive: props.withSensitive })
+	: null);
+const restoredRecommended = recommendedCacheKey.value != null ? getRecommendedTimelineCache(recommendedCacheKey.value) : null;
 const initialRecommendedSnapshotId = props.src === 'recommended'
-	? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+	? restoredRecommended?.snapshotId ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 	: '';
 const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
 // Sent only when an explicit refresh replaces a usable recommendation view.
@@ -242,7 +251,13 @@ if (props.src === 'antenna') {
 }
 
 onMounted(() => {
-	paginator.init();
+	if (restoredRecommended != null) {
+		paginator.items.value = restoredRecommended.items.slice();
+		paginator.canFetchOlder.value = restoredRecommended.canFetchOlder;
+		paginator.fetching.value = false;
+	} else {
+		paginator.init();
+	}
 
 	if (paginator.computedParams) {
 		watch(paginator.computedParams, () => {
@@ -327,7 +342,17 @@ if (!store.s.realtimeMode && props.src !== 'recommended') {
 	});
 }
 
+function saveRecommendedCache() {
+	if (recommendedCacheKey.value == null || paginator.fetching.value || paginator.error.value) return;
+	setRecommendedTimelineCache(recommendedCacheKey.value, {
+		snapshotId: recommendedSnapshotId.value,
+		items: paginator.items.value as Misskey.entities.Note[],
+		canFetchOlder: paginator.canFetchOlder.value,
+	});
+}
+
 if (props.src === 'recommended') {
+	watch([paginator.items, paginator.canFetchOlder, paginator.fetching], saveRecommendedCache, { flush: 'post' });
 	// Recommendation candidates are discovered on demand. Showing the refresh
 	// affordance on a fixed interval avoids a separate server-side check every
 	// minute; no ranking occurs until the reader explicitly presses the button.
@@ -495,6 +520,7 @@ watch(() => props.withSensitive, () => paginator.reload());
 
 onUnmounted(() => {
 	disconnectChannel();
+	saveRecommendedCache();
 });
 
 function reloadTimeline() {
@@ -507,6 +533,8 @@ function reloadTimeline() {
 			// that must own the transition, otherwise two responses append the same
 			// notes to the paginator.
 			skipRecommendedParameterReload = true;
+			// Leaving during this reload must not bring back the view it replaces.
+			if (recommendedCacheKey.value != null) clearRecommendedTimelineCache(recommendedCacheKey.value);
 			previousRecommendedSnapshotId.value = recommendedSnapshotId.value;
 			recommendedSnapshotId.value = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 			// The interval itself is intentionally long-lived, so move its deadline as
