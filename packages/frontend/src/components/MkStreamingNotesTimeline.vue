@@ -132,8 +132,8 @@ const initialRecommendedSnapshotId = props.src === 'recommended'
 	: '';
 const recommendedSnapshotId = ref(initialRecommendedSnapshotId);
 // Sent only when an explicit refresh replaces a usable recommendation view.
-// The server can reuse it during the short midnight protection window instead
-// of doing another expensive ranking pass.
+// The server keeps the part of that snapshot the reader has not seen yet, so a
+// refresh does not rescan the same newest window.
 const previousRecommendedSnapshotId = ref<string | null>(null);
 const recommendedRefreshAvailable = ref(false);
 let nextRecommendedRefreshAt = Date.now() + 60_000;

@@ -7,7 +7,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { UserMemoRepository } from '@/models/_.js';
 import { DI } from '@/di-symbols.js';
 import { Endpoint } from '@/server/api/endpoint-base.js';
-import { ChatService } from '@/core/ChatService.js';
+import { ChatService, ChatMessageAccessError } from '@/core/ChatService.js';
 import { CacheService } from '@/core/CacheService.js';
 import { ApiError } from '@/server/api/error.js';
 import { normalizeDislikedEmoji } from '@/misc/normalize-disliked-emoji.js';
@@ -78,7 +78,13 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				}
 			}
 
-			await this.chatService.react(ps.messageId, me.id, ps.reaction);
+			// メッセージの存在有無をエラー内容から判別できないようにする
+			try {
+				await this.chatService.react(ps.messageId, me.id, ps.reaction);
+			} catch (e) {
+				if (e instanceof ChatMessageAccessError) throw new ApiError(meta.errors.noSuchMessage);
+				throw e;
+			}
 		});
 	}
 }
