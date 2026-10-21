@@ -252,6 +252,7 @@ function openDislikedEmojiMemo() {
 		userId: user.value.id,
 	}, { closed: () => dispose() });
 }
+
 const isModerationNoteDirty = ref(false);
 
 watch(moderationNote, async (newValue) => {
