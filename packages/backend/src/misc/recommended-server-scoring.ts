@@ -286,3 +286,14 @@ export function isContextStale(builtAt: number | undefined, now: number, softTtl
 	// An entry without a timestamp predates this logic; treat it as stale so it gets refreshed.
 	return typeof builtAt !== 'number' || now - builtAt >= softTtlMs;
 }
+
+/**
+ * 候補プールの読み進め位置 (窓番号) を、プールの末尾を越えたら先頭側へ巻き戻す。
+ * 巻き戻さないと、最後まで読んだユーザーは新しいノートが入ってもその窓を二度と読めず、
+ * 先頭の1窓しか候補が無くなって、おすすめがすぐに枯渇する。既読は別途除外されるので、再走査しても重複しない。
+ * minCursor は巻き戻し先 (先頭窓を別に毎回読むときは 1)。
+ */
+export function wrapCandidateCursor(cursor: number, poolLength: number, windowSize: number, minCursor = 0): number {
+	if (!Number.isFinite(cursor) || cursor < minCursor) return minCursor;
+	return cursor * windowSize >= poolLength ? minCursor : cursor;
+}

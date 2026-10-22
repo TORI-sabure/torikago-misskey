@@ -26,6 +26,7 @@ import {
 	aggregateReactionRows,
 	computeServerBonuses,
 	isContextStale,
+	wrapCandidateCursor,
 	selectBySource,
 	serverWindowMax,
 	spreadAuthors as spreadAuthorsWithRandom,
@@ -228,7 +229,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// undelivered part of the preceding one when it is compatible. This is request-driven,
 				// not a background job.
 				const progressKey = `torikago:recommended:${recommendationCacheVersion}:candidate-progress:${me.id}`;
-				const savedCursor = Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1'));
+				// The saved position only ever advanced, so after reading to the end of the bounded pool it stayed
+				// there for seenDays and the reader was left with the newest window alone. Wrap it instead.
+				const candidatePoolLength = await this.redisForTimelines.llen('torikago:recommended:candidates');
+				const savedCursor = wrapCandidateCursor(Math.max(1, Number(await this.redisClient.get(progressKey) ?? '1')), candidatePoolLength, settings.candidateScanLimit, 1);
 				// Always inspect the newest window, then resume older per-user windows only
 				// until there is enough content to make the initial view scrollable.
 				// Candidate ranges remain bounded; candidate IDs are combined before one
@@ -327,7 +331,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				// A sparse candidate window must not make scrolling stop permanently.
 				// Try a few bounded windows and persist progress even when none produce
 				// a displayable note, so the next request continues farther back.
+				const appendPoolLength = await this.redisForTimelines.llen('torikago:recommended:candidates');
 				for (let attempt = 0; attempt < 2 && pageIds.length < ps.limit; attempt++) {
+					// Past the end of the pool, start over from the newest window; seen notes are excluded anyway.
+					cursor = wrapCandidateCursor(Math.max(0, cursor), appendPoolLength, settings.candidateScanLimit);
 					const includePersonalizedSources = attempt === 0;
 					const candidateWindowCount = attempt === 0 ? 1 : 3;
 					const builtExtraIds = await this.buildRecommendation(me, settings, existingTargets, Math.max(0, cursor) * settings.candidateScanLimit, batchSize, ps.snapshotId, existingAuthorCounts, ps.withRenotes, includePersonalizedSources, requestSeen, personalizedCursor, candidateWindowCount);

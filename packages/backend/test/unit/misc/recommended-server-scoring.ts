@@ -18,7 +18,7 @@ import {
 	serverWindowMax,
 	spreadAuthors,
 } from '@/misc/recommended-server-scoring.js';
-import { isContextStale } from '@/misc/recommended-server-scoring.js';
+import { isContextStale, wrapCandidateCursor } from '@/misc/recommended-server-scoring.js';
 import type { SelectableItem } from '@/misc/recommended-server-scoring.js';
 
 // recommended-timeline.ts の seededRandom と同じ (FNV-1a)。テストでは同じ乱数を使い、結果を決定的にする
@@ -401,5 +401,22 @@ describe('misc:recommended-server-scoring isContextStale', () => {
 	});
 	test('missing timestamp is stale', () => {
 		expect(isContextStale(undefined, 1000)).toBe(true);
+	});
+});
+
+describe('misc:recommended-server-scoring wrapCandidateCursor', () => {
+	test('keeps a cursor that is still inside the pool', () => {
+		expect(wrapCandidateCursor(3, 3000, 300, 1)).toBe(3);
+		expect(wrapCandidateCursor(9, 3000, 300, 1)).toBe(9);
+	});
+	test('wraps once the window starts at or beyond the end of the pool', () => {
+		expect(wrapCandidateCursor(10, 3000, 300, 1)).toBe(1);
+		expect(wrapCandidateCursor(25, 3000, 300, 1)).toBe(1);
+		expect(wrapCandidateCursor(10, 3000, 300)).toBe(0);
+	});
+	test('an empty pool and invalid cursors fall back to the minimum', () => {
+		expect(wrapCandidateCursor(1, 0, 300, 1)).toBe(1);
+		expect(wrapCandidateCursor(Number.NaN, 3000, 300, 1)).toBe(1);
+		expect(wrapCandidateCursor(-2, 3000, 300)).toBe(0);
 	});
 });
