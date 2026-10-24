@@ -5,9 +5,10 @@
 
 import type * as Misskey from 'misskey-js';
 
-// おすすめTLは取得のたびに順位付けが走るため、タイムラインの切り替えやブラウザバックで
+// おすすめTLは取得のたびに順位付けが走るため、タイムラインページ内でタブを切り替えて
 // コンポーネントが作り直されても再取得しないよう、表示中の内容を保持する。
-// メモリ上のみで保持するので、ページの再読み込みや明示的なリロード操作で更新される。
+// 保持するのはタイムラインページが生きている間だけで、ページを離れる(破棄される)と
+// clearAllRecommendedTimelineCache で捨てる。メモリ上のみなので、再読み込みでも更新される。
 export type RecommendedTimelineCache = {
 	snapshotId: string;
 	items: Misskey.entities.Note[];
@@ -35,4 +36,8 @@ export function setRecommendedTimelineCache(key: string, value: RecommendedTimel
 
 export function clearRecommendedTimelineCache(key: string): void {
 	cache.delete(key);
+}
+
+export function clearAllRecommendedTimelineCache(): void {
+	cache.clear();
 }

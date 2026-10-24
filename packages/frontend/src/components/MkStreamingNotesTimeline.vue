@@ -128,9 +128,9 @@ provide(DI.inChannel, computed(() => props.src === 'channel' ? props.channel ?? 
 let paginator: IPaginator<Misskey.entities.Note>;
 let skipRecommendedParameterReload = false;
 let timelineReloadPromise: Promise<void> | null = null;
-// Leaving the timeline (tab switch, browser back) must not trigger a new recommendation run.
+// Switching timelines on the timeline page must not trigger a new recommendation run.
 // The displayed notes and their snapshot are kept in memory and restored on the next mount;
-// only an explicit reload (button, pull to refresh, page reload) builds a new snapshot.
+// pages/timeline.vue drops them when the page itself goes away.
 // The key follows the filters, so a changed filter never stores its view under the old key.
 const recommendedCacheKey = computed(() => props.src === 'recommended'
 	? recommendedTimelineCacheKey({ userId: $i?.id, withRenotes: props.withRenotes, onlyFiles: props.onlyFiles, withSensitive: props.withSensitive })
