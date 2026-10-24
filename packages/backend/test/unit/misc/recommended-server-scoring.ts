@@ -50,12 +50,12 @@ describe('misc:recommended-server-scoring reaction aggregation', () => {
 
 	test('サーバー別は作者別の行を足し合わせ、ローカル (null) は含めない', () => {
 		const result = aggregateReactionRows([
-			{ userId: 'a', userHost: 'misskey.io', total: 10, recent: 0 },
-			{ userId: 'b', userHost: 'misskey.io', total: 5, recent: 1 },
+			{ userId: 'a', userHost: 'big.example', total: 10, recent: 0 },
+			{ userId: 'b', userHost: 'big.example', total: 5, recent: 1 },
 			{ userId: 'c', userHost: 'small.example', total: 4, recent: 0 },
 			{ userId: 'd', userHost: null, total: 100, recent: 0 },
 		]);
-		expect(result.hosts).toEqual([['misskey.io', 18], ['small.example', 4]]);
+		expect(result.hosts).toEqual([['big.example', 18], ['small.example', 4]]);
 		expect(result.hostTotal).toBe(22);
 	});
 
@@ -87,9 +87,9 @@ describe('misc:recommended-server-scoring computeServerBonuses', () => {
 	});
 
 	test('候補に多いサーバーほど多様性の加点が小さい (流動的なスコア)', () => {
-		const hosts = [...Array(80).fill('misskey.io'), ...Array(15).fill('mid.example'), 'rare.example', 'rare.example'] as string[];
+		const hosts = [...Array(80).fill('big.example'), ...Array(15).fill('mid.example'), 'rare.example', 'rare.example'] as string[];
 		const bonuses = computeServerBonuses(hosts, noAffinity, settings);
-		expect(bonuses.get('misskey.io')!).toBeLessThan(bonuses.get('mid.example')!);
+		expect(bonuses.get('big.example')!).toBeLessThan(bonuses.get('mid.example')!);
 		expect(bonuses.get('mid.example')!).toBeLessThan(bonuses.get('rare.example')!);
 		// 多様性だけなら最大値を超えない
 		for (const bonus of bonuses.values()) expect(bonus).toBeLessThanOrEqual(settings.serverDiversityBonus);
@@ -126,12 +126,12 @@ describe('misc:recommended-server-scoring computeServerBonuses', () => {
 	});
 
 	test('誰もが多く反応する巨大サーバーは、候補の割合どおりなら親和度で加点されない', () => {
-		const hosts = [...Array(80).fill('misskey.io'), ...Array(20).fill('small.example')] as string[];
+		const hosts = [...Array(80).fill('big.example'), ...Array(20).fill('small.example')] as string[];
 		// リアクションの割合 = 候補の割合 (80% / 20%)
-		const proportional = { hosts: [['misskey.io', 800], ['small.example', 200]] as Array<[string, number]>, total: 1000 };
+		const proportional = { hosts: [['big.example', 800], ['small.example', 200]] as Array<[string, number]>, total: 1000 };
 		const withAffinity = computeServerBonuses(hosts, proportional, settings);
 		const without = computeServerBonuses(hosts, noAffinity, settings);
-		expect(withAffinity.get('misskey.io')!).toBeCloseTo(without.get('misskey.io')!, 5);
+		expect(withAffinity.get('big.example')!).toBeCloseTo(without.get('big.example')!, 5);
 		expect(withAffinity.get('small.example')!).toBeCloseTo(without.get('small.example')!, 5);
 	});
 
@@ -235,10 +235,10 @@ describe('misc:recommended-server-scoring selectBySource', () => {
 	test('上限を無効 (100%) にすると、導入前の選定結果と完全に一致する', () => {
 		for (let trial = 0; trial < 20; trial++) {
 			const items = makeItems([
-				{ source: 'reactionAffinity', host: 'misskey.io', count: 30 + trial },
+				{ source: 'reactionAffinity', host: 'big.example', count: 30 + trial },
 				{ source: 'reactionAffinity', host: 'a.example', count: 10 },
-				{ source: 'following', host: 'misskey.io', count: 8 },
-				{ source: 'unknown', host: 'misskey.io', count: 40 },
+				{ source: 'following', host: 'big.example', count: 8 },
+				{ source: 'unknown', host: 'big.example', count: 40 },
 				{ source: 'unknown', host: null, count: 5 },
 			]);
 			const uncapped = { ...baseSettings, maxServerPercent: 100 };
@@ -248,9 +248,9 @@ describe('misc:recommended-server-scoring selectBySource', () => {
 		}
 	});
 
-	test('misskey.io が候補の大半でも、他のサーバーの候補があれば上限までしか選ばれない', () => {
+	test('big.example が候補の大半でも、他のサーバーの候補があれば上限までしか選ばれない', () => {
 		const items = makeItems([
-			{ source: 'unknown', host: 'misskey.io', count: 150 },
+			{ source: 'unknown', host: 'big.example', count: 150 },
 			{ source: 'unknown', host: 'a.example', count: 12 },
 			{ source: 'unknown', host: 'b.example', count: 12 },
 			{ source: 'unknown', host: 'c.example', count: 12 },
@@ -260,12 +260,12 @@ describe('misc:recommended-server-scoring selectBySource', () => {
 		const selected = selectBySource(items, baseSettings, 'seed', seededRandom);
 		const cap = serverCapFor(baseSettings.resultLimit, baseSettings.maxServerPercent);
 		expect(selected).toHaveLength(baseSettings.resultLimit);
-		expect(selected.filter(item => item.host === 'misskey.io').length).toBeLessThanOrEqual(cap);
+		expect(selected.filter(item => item.host === 'big.example').length).toBeLessThanOrEqual(cap);
 	});
 
 	test('他に候補が無ければ上限を外して埋め、件数は上限なしの場合と変わらない (UX の悪化を防ぐ)', () => {
 		const items = makeItems([
-			{ source: 'unknown', host: 'misskey.io', count: 100 },
+			{ source: 'unknown', host: 'big.example', count: 100 },
 			{ source: 'unknown', host: 'a.example', count: 3 },
 		]);
 		const capped = selectBySource(items, baseSettings, 'seed', seededRandom);
@@ -278,7 +278,7 @@ describe('misc:recommended-server-scoring selectBySource', () => {
 
 	test('上限を守れる範囲では、上限なしより多様なサーバーが選ばれる', () => {
 		const items = makeItems([
-			{ source: 'unknown', host: 'misskey.io', count: 120 },
+			{ source: 'unknown', host: 'big.example', count: 120 },
 			...Array.from({ length: 10 }, (_, i) => ({ source: 'unknown', host: `s${i}.example`, count: 6 })),
 		]);
 		const distinct = (selected: Item[]) => new Set(selected.map(item => item.host)).size;
@@ -288,7 +288,7 @@ describe('misc:recommended-server-scoring selectBySource', () => {
 	});
 
 	test('フォロー中のアカウントは上限の対象外 (読者が選んだもの)', () => {
-		const items = makeItems([{ source: 'following', host: 'misskey.io', count: 60 }]);
+		const items = makeItems([{ source: 'following', host: 'big.example', count: 60 }]);
 		const selected = selectBySource(items, { ...baseSettings, followingPercent: 100, reactionAffinityPercent: 0, unknownPercent: 0, maxNotesPerAuthor: 10 }, 'seed', seededRandom);
 		expect(selected).toHaveLength(baseSettings.resultLimit);
 	});
@@ -337,58 +337,58 @@ function maxHostInAnyWindow(items: SpreadItem[], host: string): number {
 describe('misc:recommended-server-scoring spreadAuthors', () => {
 	test('サーバーの窓を指定しなければ、導入前の並び順と完全に一致する', () => {
 		for (let trial = 0; trial < 20; trial++) {
-			const items: SpreadItem[] = Array.from({ length: 60 }, (_, i) => ({ id: `n${i}`, authorId: `a${(i * 7 + trial) % 23}`, host: i % 3 === 0 ? 'misskey.io' : null }));
+			const items: SpreadItem[] = Array.from({ length: 60 }, (_, i) => ({ id: `n${i}`, authorId: `a${(i * 7 + trial) % 23}`, host: i % 3 === 0 ? 'big.example' : null }));
 			const expected = originalSpread(items, `seed${trial}`, trial % 2 === 0 ? null : 'a3');
 			const actual = spreadAuthors(items, `seed${trial}`, seededRandom, trial % 2 === 0 ? null : 'a3');
 			expect(actual.map(item => item.id)).toEqual(expected.map(item => item.id));
 		}
 	});
 
-	test('先頭が misskey.io だらけでも、最初の 1 ページ (10件) の同一サーバーは上限以内', () => {
+	test('先頭が big.example だらけでも、最初の 1 ページ (10件) の同一サーバーは上限以内', () => {
 		const items: SpreadItem[] = [
-			...Array.from({ length: 30 }, (_, i) => ({ id: `io${i}`, authorId: `io-author${i}`, host: 'misskey.io' })),
+			...Array.from({ length: 30 }, (_, i) => ({ id: `io${i}`, authorId: `io-author${i}`, host: 'big.example' })),
 			...Array.from({ length: 30 }, (_, i) => ({ id: `ot${i}`, authorId: `ot-author${i}`, host: `s${i % 6}.example` })),
 		];
 		const max = serverWindowMax(40);
 		const spread = spreadAuthors(items, 'seed', seededRandom, null, { max });
-		expect(spread.slice(0, SERVER_WINDOW_SIZE).filter(item => item.host === 'misskey.io').length).toBeLessThanOrEqual(max);
+		expect(spread.slice(0, SERVER_WINDOW_SIZE).filter(item => item.host === 'big.example').length).toBeLessThanOrEqual(max);
 	});
 
 	test('代わりが十分にあるとき、どの連続 10 件でも同一サーバーは上限以内', () => {
-		// misskey.io は全体の 30% で、窓の上限 (40%) の範囲に収まる
-		const items: SpreadItem[] = Array.from({ length: 100 }, (_, i) => ({ id: `n${i}`, authorId: `a${i}`, host: i % 10 < 3 ? 'misskey.io' : `s${i % 7}.example` }));
+		// big.example は全体の 30% で、窓の上限 (40%) の範囲に収まる
+		const items: SpreadItem[] = Array.from({ length: 100 }, (_, i) => ({ id: `n${i}`, authorId: `a${i}`, host: i % 10 < 3 ? 'big.example' : `s${i % 7}.example` }));
 		const spread = spreadAuthors(items, 'seed', seededRandom, null, { max: serverWindowMax(40) });
-		expect(maxHostInAnyWindow(spread, 'misskey.io')).toBeLessThanOrEqual(serverWindowMax(40));
+		expect(maxHostInAnyWindow(spread, 'big.example')).toBeLessThanOrEqual(serverWindowMax(40));
 	});
 
 	test('代わりが無いときは諦めて並べる (件数は減らず、重複もしない)', () => {
-		const items: SpreadItem[] = Array.from({ length: 25 }, (_, i) => ({ id: `n${i}`, authorId: `a${i}`, host: 'misskey.io' }));
+		const items: SpreadItem[] = Array.from({ length: 25 }, (_, i) => ({ id: `n${i}`, authorId: `a${i}`, host: 'big.example' }));
 		const spread = spreadAuthors(items, 'seed', seededRandom, null, { max: 2 });
 		expect(spread).toHaveLength(25);
 		expect(new Set(spread.map(item => item.id)).size).toBe(25);
 	});
 
 	test('並べ替えの前後で、ノートの集合は変わらない', () => {
-		const items: SpreadItem[] = Array.from({ length: 80 }, (_, i) => ({ id: `n${i}`, authorId: `a${i % 30}`, host: i % 2 === 0 ? 'misskey.io' : `s${i % 5}.example` }));
+		const items: SpreadItem[] = Array.from({ length: 80 }, (_, i) => ({ id: `n${i}`, authorId: `a${i % 30}`, host: i % 2 === 0 ? 'big.example' : `s${i % 5}.example` }));
 		const spread = spreadAuthors(items, 'seed', seededRandom, null, { max: 3 });
 		expect([...spread.map(item => item.id)].sort()).toEqual([...items.map(item => item.id)].sort());
 	});
 
 	test('追加ページでは、直前のページの末尾 (recentHosts) を窓に含めて上限を守る', () => {
-		// 直前のページの末尾 9 件がすべて misskey.io のとき、新しい先頭に misskey.io は置かれない
-		const recentHosts = Array(SERVER_WINDOW_SIZE - 1).fill('misskey.io') as string[];
+		// 直前のページの末尾 9 件がすべて big.example のとき、新しい先頭に big.example は置かれない
+		const recentHosts = Array(SERVER_WINDOW_SIZE - 1).fill('big.example') as string[];
 		const items: SpreadItem[] = [
-			{ id: 'io0', authorId: 'x0', host: 'misskey.io' },
-			{ id: 'io1', authorId: 'x1', host: 'misskey.io' },
+			{ id: 'io0', authorId: 'x0', host: 'big.example' },
+			{ id: 'io1', authorId: 'x1', host: 'big.example' },
 			{ id: 'ot0', authorId: 'y0', host: 'a.example' },
 			{ id: 'ot1', authorId: 'y1', host: 'b.example' },
 		];
 		const spread = spreadAuthors(items, 'seed', seededRandom, null, { max: 4, recentHosts });
-		expect(spread[0]!.host).not.toBe('misskey.io');
+		expect(spread[0]!.host).not.toBe('big.example');
 	});
 
 	test('可能な範囲で、同じ作者が連続しない', () => {
-		const items: SpreadItem[] = Array.from({ length: 60 }, (_, i) => ({ id: `n${i}`, authorId: `a${i % 20}`, host: i % 4 === 0 ? 'misskey.io' : `s${i % 5}.example` }));
+		const items: SpreadItem[] = Array.from({ length: 60 }, (_, i) => ({ id: `n${i}`, authorId: `a${i % 20}`, host: i % 4 === 0 ? 'big.example' : `s${i % 5}.example` }));
 		const spread = spreadAuthors(items, 'seed', seededRandom, null, { max: 4 });
 		for (let i = 1; i < spread.length; i++) expect(spread[i]!.authorId).not.toBe(spread[i - 1]!.authorId);
 	});
