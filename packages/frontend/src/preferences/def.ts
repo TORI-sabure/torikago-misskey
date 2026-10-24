@@ -270,6 +270,9 @@ export const PREF_DEF = definePreferences({
 	enableInfiniteScroll: {
 		default: true,
 	},
+	autocompleteCustomEmojiWithoutColon: {
+		default: false,
+	},
 	useReactionPickerForContextMenu: {
 		default: false,
 	},

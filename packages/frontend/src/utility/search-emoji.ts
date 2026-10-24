@@ -134,3 +134,33 @@ export function searchEmojiExact(query: string | null, emojiDb: EmojiDef[], max 
 		.slice(0, max)
 		.map(it => it.emoji);
 }
+
+/**
+ * `:` を打たずに入力した文字列用の検索。カスタム絵文字の名前・エイリアス(検索用タグ)の
+ * 完全一致と前方一致だけを対象にする (部分一致やあいまい検索は、普通の文章での誤爆が多いので行わない)。
+ */
+export function searchCustomEmojiPrefix(query: string | null, emojiDb: EmojiDef[], max = 30): EmojiDef[] {
+	if (!query) {
+		return [];
+	}
+
+	const matched = new Map<string, EmojiScore>();
+	const add = (x: EmojiDef, score: number) => {
+		const key = x.aliasOf ?? x.name;
+		if (!matched.has(key)) matched.set(key, { emoji: x, score });
+	};
+
+	// 文頭の大文字などで取りこぼさないよう、大文字小文字は区別しない
+	const q = query.toLowerCase();
+	const customEmojis = emojiDb.filter(x => 'isCustomEmoji' in x && x.isCustomEmoji).map(x => ({ x, name: x.name.toLowerCase() }));
+	// 完全一致 → 前方一致の順。それぞれ本名を先に、エイリアスを後に見る
+	for (const { x, name } of customEmojis) if (!x.aliasOf && name === q) add(x, query.length + 3);
+	for (const { x, name } of customEmojis) if (name === q) add(x, query.length + 2);
+	for (const { x, name } of customEmojis) if (!x.aliasOf && name.startsWith(q)) add(x, query.length + 1);
+	for (const { x, name } of customEmojis) if (name.startsWith(q)) add(x, query.length);
+
+	return [...matched.values()]
+		.sort((x, y) => y.score - x.score)
+		.slice(0, max)
+		.map(it => it.emoji);
+}

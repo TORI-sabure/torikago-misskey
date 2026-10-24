@@ -20,7 +20,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 			<span class="name">{{ hashtag }}</span>
 		</li>
 	</ol>
-	<ol v-else-if="type === 'emoji' || type === 'emojiComplete' && emojis.length > 0" ref="suggests" :class="$style.list">
+	<ol v-else-if="type === 'emoji' || (type === 'emojiBare' || type === 'emojiComplete') && emojis.length > 0" ref="suggests" :class="$style.list">
 		<li v-for="emoji in emojis" :key="emoji.emoji" :class="$style.item" tabindex="-1" @click="complete(type, emoji.emoji)" @keydown="onKeydown">
 			<MkCustomEmoji v-if="'isCustomEmoji' in emoji && emoji.isCustomEmoji" :name="emoji.emoji" :class="$style.emoji" :fallbackToImage="true"/>
 			<MkEmoji v-else :emoji="emoji.emoji" :class="$style.emoji"/>
@@ -59,7 +59,7 @@ import { store } from '@/store.js';
 import { i18n } from '@/i18n.js';
 import { miLocalStorage } from '@/local-storage.js';
 import { customEmojis } from '@/custom-emojis.js';
-import { searchEmoji, searchEmojiExact } from '@/utility/search-emoji.js';
+import { searchCustomEmojiPrefix, searchEmoji, searchEmojiExact } from '@/utility/search-emoji.js';
 import { prefer } from '@/preferences.js';
 
 export type CompleteInfo = {
@@ -73,6 +73,11 @@ export type CompleteInfo = {
 	},
 	// `:emo` -> `:emoji:` or some unicode emoji
 	emoji: {
+		payload: string;
+		query: string;
+	},
+	// `:` を打たずに `emo` と入力した場合 -> `:emoji:` (カスタム絵文字のみ)
+	emojiBare: {
 		payload: string;
 		query: string;
 	},
@@ -175,7 +180,7 @@ type PropsType<T extends keyof CompleteInfo> = {
 //const props = defineProps<PropsType<keyof CompleteInfo>>();
 // ↑と同じだけど↓にしないとdiscriminated unionにならない。
 // https://www.typescriptlang.org/docs/handbook/typescript-in-5-minutes-func.html#discriminated-unions
-const props = defineProps<PropsType<'user'> | PropsType<'hashtag'> | PropsType<'emoji'> | PropsType<'emojiComplete'> | PropsType<'mfmTag'> | PropsType<'mfmParam'>>();
+const props = defineProps<PropsType<'user'> | PropsType<'hashtag'> | PropsType<'emoji'> | PropsType<'emojiBare'> | PropsType<'emojiComplete'> | PropsType<'mfmTag'> | PropsType<'mfmParam'>>();
 
 const emit = defineEmits<{
 	<T extends keyof CompleteInfo>(event: 'done', value: { type: T; value: CompleteInfo[T]['payload'] }): void;
@@ -203,7 +208,7 @@ function completeMfmParam(param: string) {
 function complete<T extends keyof CompleteInfo>(type: T, value: CompleteInfo[T]['payload']) {
 	emit('done', { type, value });
 	emit('closed');
-	if (type === 'emoji' || type === 'emojiComplete') {
+	if (type === 'emoji' || type === 'emojiBare' || type === 'emojiComplete') {
 		let recents = store.s.recentlyUsedEmojis;
 		recents = recents.filter((emoji) => emoji !== value);
 		recents.unshift(value as string);
@@ -292,6 +297,8 @@ function exec() {
 		}
 
 		emojis.value = searchEmoji(props.q, emojiDb.value);
+	} else if (props.type === 'emojiBare') {
+		emojis.value = searchCustomEmojiPrefix(props.q, emojiDb.value);
 	} else if (props.type === 'emojiComplete') {
 		emojis.value = searchEmojiExact(props.q, unicodeEmojiDB.value);
 	} else if (props.type === 'mfmTag') {

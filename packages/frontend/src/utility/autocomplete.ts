@@ -9,6 +9,8 @@ import { toASCII } from 'punycode.js';
 import type { Ref } from 'vue';
 import type { CompleteInfo } from '@/components/MkAutocomplete.vue';
 import { popup } from '@/os.js';
+import { prefer } from '@/preferences.js';
+import { customEmojis } from '@/custom-emojis.js';
 
 export type SuggestionType = 'user' | 'hashtag' | 'emoji' | 'mfmTag' | 'mfmParam';
 
@@ -103,7 +105,7 @@ export class Autocomplete {
 			mfmTagIndex);
 
 		if (max === -1) {
-			this.close();
+			if (!this.openBareEmoji(text)) this.close();
 			return;
 		}
 
@@ -186,9 +188,31 @@ export class Autocomplete {
 			}
 		}
 
+		// 他の種類の候補が出ていないときだけ、`:` なしの絵文字候補を試す
+		if (!opened && this.openBareEmoji(text)) {
+			opened = true;
+		}
+
 		if (!opened) {
 			this.close();
 		}
+	}
+
+	/**
+	 * `:` を打たずに入力された英数字の並びを、カスタム絵文字の前方一致で候補にする (設定で有効にしたときだけ)。
+	 * 短すぎる入力 (2文字未満) では出さない。候補を開いたら true を返す。
+	 */
+	private openBareEmoji(text: string): boolean {
+		if (!this.onlyType.includes('emoji') || !prefer.s.autocompleteCustomEmojiWithoutColon) return false;
+		// `:name` の入力中や `:name:` の直後は従来の絵文字候補の担当
+		if (text.includes(':') && /:[a-z0-9_+\-]*$/i.test(text)) return false;
+		const bare = /[a-zA-Z0-9_]{2,}$/.exec(text)?.[0];
+		if (bare == null) return false;
+		// 候補が無いときはポップアップごと出さない (空のポップアップが Tab や矢印キーを奪うため)
+		const lower = bare.toLowerCase();
+		if (!customEmojis.value.some(x => x.name.toLowerCase().startsWith(lower) || x.aliases?.some(alias => alias.toLowerCase().startsWith(lower)))) return false;
+		this.open('emojiBare', bare);
+		return true;
 	}
 
 	/**
@@ -309,6 +333,22 @@ export class Autocomplete {
 			const after = source.substring(caret);
 
 			// 挿入
+			this.text = trimmedBefore + props.value + after;
+
+			// キャレットを戻す
+			nextTick(() => {
+				this.textarea.focus();
+				const pos = trimmedBefore.length + props.value.length;
+				this.textarea.setSelectionRange(pos, pos);
+			});
+		} else if (isCompleteType('emojiBare', props)) {
+			const source = this.text;
+
+			const before = source.substring(0, caret);
+			const trimmedBefore = before.replace(/[a-zA-Z0-9_]+$/, '');
+			const after = source.substring(caret);
+
+			// 入力済みの文字列を絵文字に置き換える
 			this.text = trimmedBefore + props.value + after;
 
 			// キャレットを戻す

@@ -113,6 +113,15 @@ SPDX-License-Identifier: AGPL-3.0-only
 								</MkPreferenceContainer>
 							</SearchMarker>
 
+							<SearchMarker :keywords="['emoji', 'custom', 'autocomplete', 'suggest', 'colon']">
+								<MkPreferenceContainer k="autocompleteCustomEmojiWithoutColon">
+									<MkSwitch v-model="autocompleteCustomEmojiWithoutColon">
+										<template #label><SearchLabel>{{ i18n.ts.autocompleteCustomEmojiWithoutColon }}</SearchLabel></template>
+										<template #caption>{{ i18n.ts.autocompleteCustomEmojiWithoutColonDescription }}</template>
+									</MkSwitch>
+								</MkPreferenceContainer>
+							</SearchMarker>
+
 							<SearchMarker :keywords="['auto', 'load', 'auto', 'more', 'scroll']">
 								<MkPreferenceContainer k="enableInfiniteScroll">
 									<MkSwitch v-model="enableInfiniteScroll">
@@ -963,6 +972,7 @@ const showFixedPostForm = prefer.model('showFixedPostForm');
 const showFixedPostFormInChannel = prefer.model('showFixedPostFormInChannel');
 const numberOfPageCache = prefer.model('numberOfPageCache');
 const enableInfiniteScroll = prefer.model('enableInfiniteScroll');
+const autocompleteCustomEmojiWithoutColon = prefer.model('autocompleteCustomEmojiWithoutColon');
 const useReactionPickerForContextMenu = prefer.model('useReactionPickerForContextMenu');
 const showAvailableReactionsFirstInNote = prefer.model('showAvailableReactionsFirstInNote');
 const useGroupedNotifications = prefer.model('useGroupedNotifications');

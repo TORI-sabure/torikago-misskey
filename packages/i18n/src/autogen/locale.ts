@@ -2613,6 +2613,14 @@ export interface Locale extends ILocale {
      */
     "enableInfiniteScroll": string;
     /**
+     * 「:」なしでカスタム絵文字の候補を表示
+     */
+    "autocompleteCustomEmojiWithoutColon": string;
+    /**
+     * 2文字以上の英数字を入力すると、名前やタグが前方一致するカスタム絵文字を候補に出します。候補の選択は Tab / 矢印キーで行い、Enter で確定します。
+     */
+    "autocompleteCustomEmojiWithoutColonDescription": string;
+    /**
      * 公開範囲
      */
     "visibility": string;
