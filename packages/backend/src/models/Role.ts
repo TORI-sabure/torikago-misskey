@@ -5,6 +5,7 @@
 
 import { Entity, Column, PrimaryColumn } from 'typeorm';
 import { id } from './util/id.js';
+import type { MiUser } from './User.js';
 
 /**
  * ～かつ～
@@ -257,6 +258,19 @@ export class MiRole {
 		default: false,
 	})
 	public canEditMembersByModerator: boolean;
+
+	@Column({
+		...id(),
+		nullable: true,
+		comment: 'The ID of the user who created this role with the user role editor. NULL for roles created by administrators.',
+	})
+	public createdByUserId: MiUser['id'] | null;
+
+	// ユーザーが作成したロールのうち、作成者本人だけがアサインできるもの
+	@Column('boolean', {
+		default: false,
+	})
+	public isPersonal: boolean;
 
 	// UIに表示する際の並び順用(大きいほど先頭)
 	@Column('integer', {

@@ -157,7 +157,12 @@ const menuDef = computed<SuperMenuDef[]>(() => [{
 		text: i18n.ts._settings.accountData,
 		to: '/settings/account-data',
 		active: currentPage.value?.route.name === 'account-data',
-	}, {
+	}, ...(instance.enableUserRoleEditor ? [{
+		icon: 'ti ti-badge',
+		text: ({ 'ja-JP': 'ロールエディター' } as Record<string, string>)[window.document.documentElement.lang] ?? 'Role editor',
+		to: '/settings/role-editor',
+		active: currentPage.value?.route.name === 'role-editor',
+	}] : []), {
 		icon: 'ti ti-dots',
 		text: i18n.ts.other,
 		to: '/settings/other',

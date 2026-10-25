@@ -639,6 +639,18 @@ export class MiMeta {
 	})
 	public hashtagSearchPartialMatch: boolean;
 
+	@Column('boolean', {
+		default: false,
+		comment: 'Whether users can create and manage their own cosmetic roles with the user role editor.',
+	})
+	public enableUserRoleEditor: boolean;
+
+	@Column('integer', {
+		default: 10,
+		comment: 'The maximum number of roles one user can create with the user role editor.',
+	})
+	public userRoleCreateLimit: number;
+
 	@Column('varchar', {
 		length: 512,
 		array: true,

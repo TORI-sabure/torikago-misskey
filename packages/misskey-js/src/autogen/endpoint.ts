@@ -603,6 +603,14 @@ import type {
 	RolesNotesResponse,
 	RolesShowRequest,
 	RolesShowResponse,
+	RolesUserAssignRequest,
+	RolesUserCreateRequest,
+	RolesUserCreateResponse,
+	RolesUserDeleteRequest,
+	RolesUserListRequest,
+	RolesUserListResponse,
+	RolesUserUpdateRequest,
+	RolesUserUpdateResponse,
 	RolesUsersRequest,
 	RolesUsersResponse,
 	ServerInfoResponse,
@@ -1088,6 +1096,11 @@ export type Endpoints = {
 	'roles/list': { req: EmptyRequest; res: RolesListResponse };
 	'roles/notes': { req: RolesNotesRequest; res: RolesNotesResponse };
 	'roles/show': { req: RolesShowRequest; res: RolesShowResponse };
+	'roles/user/assign': { req: RolesUserAssignRequest; res: EmptyResponse };
+	'roles/user/create': { req: RolesUserCreateRequest; res: RolesUserCreateResponse };
+	'roles/user/delete': { req: RolesUserDeleteRequest; res: EmptyResponse };
+	'roles/user/list': { req: RolesUserListRequest; res: RolesUserListResponse };
+	'roles/user/update': { req: RolesUserUpdateRequest; res: RolesUserUpdateResponse };
 	'roles/users': { req: RolesUsersRequest; res: RolesUsersResponse };
 	'server-info': { req: EmptyRequest; res: ServerInfoResponse };
 	'stats': { req: EmptyRequest; res: StatsResponse };

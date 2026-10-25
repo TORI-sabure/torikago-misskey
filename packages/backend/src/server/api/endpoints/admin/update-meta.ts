@@ -164,6 +164,8 @@ export const paramDef = {
 		recommendedTimelineForcedWords: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 64 } },
 		recommendedTimelineSettings: { type: 'object' },
 		hashtagSearchPartialMatch: { type: 'boolean' },
+		enableUserRoleEditor: { type: 'boolean' },
+		userRoleCreateLimit: { type: 'integer', minimum: 0, maximum: 1000 },
 		abuseReportReasons: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 512 } },
 		perLocalUserUserTimelineCacheMax: { type: 'integer' },
 		perRemoteUserUserTimelineCacheMax: { type: 'integer' },
@@ -711,6 +713,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 			if (ps.hashtagSearchPartialMatch !== undefined) {
 				set.hashtagSearchPartialMatch = ps.hashtagSearchPartialMatch;
+			}
+
+			if (ps.enableUserRoleEditor !== undefined) {
+				set.enableUserRoleEditor = ps.enableUserRoleEditor;
+			}
+
+			if (ps.userRoleCreateLimit !== undefined) {
+				set.userRoleCreateLimit = ps.userRoleCreateLimit;
 			}
 
 			if (ps.abuseReportReasons !== undefined) {

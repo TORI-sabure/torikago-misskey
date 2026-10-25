@@ -432,6 +432,16 @@ export const packedRoleSchema = {
 					optional: false, nullable: false,
 					example: false,
 				},
+				createdByUserId: {
+					type: 'string',
+					optional: false, nullable: true,
+					format: 'id',
+				},
+				isPersonal: {
+					type: 'boolean',
+					optional: false, nullable: false,
+					example: false,
+				},
 				policies: {
 					type: 'object',
 					optional: false, nullable: false,

@@ -222,6 +222,10 @@ export const packedMetaLiteSchema = {
 			type: 'boolean',
 			optional: false, nullable: false,
 		},
+		enableUserRoleEditor: {
+			type: 'boolean',
+			optional: false, nullable: false,
+		},
 		enableServiceWorker: {
 			type: 'boolean',
 			optional: false, nullable: false,

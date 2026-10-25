@@ -131,6 +131,19 @@ SPDX-License-Identifier: AGPL-3.0-only
 					</MkSwitch>
 				</SearchMarker>
 
+				<SearchMarker :keywords="['role', 'editor', 'user']">
+					<div class="_gaps_s">
+						<MkSwitch v-model="enableUserRoleEditor" @change="onChange_enableUserRoleEditor">
+							<template #label><SearchLabel>{{ userRoleEditorAdminText.label }}</SearchLabel></template>
+							<template #caption>{{ userRoleEditorAdminText.caption }}</template>
+						</MkSwitch>
+						<MkInput v-model="userRoleCreateLimit" type="number" :min="0" :max="1000">
+							<template #label>{{ userRoleEditorAdminText.limit }}</template>
+						</MkInput>
+						<MkButton primary inline @click="onChange_userRoleCreateLimit"><i class="ti ti-check"></i> {{ i18n.ts.save }}</MkButton>
+					</div>
+				</SearchMarker>
+
 				<XServerRules/>
 
 				<SearchMarker :keywords="['preserved', 'usernames']">
@@ -281,6 +294,13 @@ const hashtagSearchAdminTexts: Record<string, { label: string; caption: string }
 	'zh-TW': { label: '允許雜湊標籤搜尋部分符合', caption: '關閉時僅搜尋以輸入內容開頭的雜湊標籤。開啟後也會搜尋包含輸入內容的雜湊標籤。' },
 };
 const hashtagSearchAdminText = hashtagSearchAdminTexts[window.document.documentElement.lang] ?? hashtagSearchAdminTexts['en-US']!;
+const enableUserRoleEditor = ref(meta.enableUserRoleEditor);
+const userRoleCreateLimit = ref(meta.userRoleCreateLimit);
+const userRoleEditorAdminTexts: Record<string, { label: string; caption: string; limit: string }> = {
+	'en-US': { label: 'Enable user role editor', caption: 'Lets users create, edit and delete their own cosmetic roles (no policies) and attach them to themselves.', limit: 'Maximum number of roles one user can create' },
+	'ja-JP': { label: 'ユーザーロールエディターを有効にする', caption: 'ユーザーが自分専用の見た目だけのロール（権限なし）を作成・編集・削除し、自分につけられるようになります。', limit: '1ユーザーが作成できるロール数の上限' },
+};
+const userRoleEditorAdminText = userRoleEditorAdminTexts[window.document.documentElement.lang] ?? userRoleEditorAdminTexts['en-US']!;
 const emailRequiredForSignup = ref(meta.emailRequiredForSignup);
 const {
 	model: ugcVisibilityForVisitor,
@@ -454,6 +474,24 @@ async function onChange_enableRegistration(value: boolean) {
 function onChange_hashtagSearchPartialMatch(value: boolean) {
 	os.apiWithDialog('admin/update-meta', {
 		hashtagSearchPartialMatch: value,
+	}).then(() => {
+		fetchInstance(true);
+	});
+}
+
+function onChange_enableUserRoleEditor(value: boolean) {
+	os.apiWithDialog('admin/update-meta', {
+		enableUserRoleEditor: value,
+	}).then(() => {
+		fetchInstance(true);
+	});
+}
+
+function onChange_userRoleCreateLimit() {
+	const value = Math.max(0, Math.min(1000, Math.floor(Number(userRoleCreateLimit.value) || 0)));
+	userRoleCreateLimit.value = value;
+	os.apiWithDialog('admin/update-meta', {
+		userRoleCreateLimit: value,
 	}).then(() => {
 		fetchInstance(true);
 	});

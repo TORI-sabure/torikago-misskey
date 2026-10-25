@@ -70,6 +70,8 @@ export class RoleEntityService {
 			asBadge: role.asBadge,
 			preserveAssignmentOnMoveAccount: role.preserveAssignmentOnMoveAccount,
 			canEditMembersByModerator: role.canEditMembersByModerator,
+			createdByUserId: role.createdByUserId,
+			isPersonal: role.isPersonal,
 			displayOrder: role.displayOrder,
 			policies: policies,
 			usersCount: assignedCount,

@@ -426,6 +426,14 @@ export const meta = {
 				type: 'boolean',
 				optional: false, nullable: false,
 			},
+			enableUserRoleEditor: {
+				type: 'boolean',
+				optional: false, nullable: false,
+			},
+			userRoleCreateLimit: {
+				type: 'integer',
+				optional: false, nullable: false,
+			},
 			abuseReportReasons: {
 				type: 'array',
 				optional: false, nullable: false,
@@ -792,6 +800,8 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				recommendedTimelineForcedWords: instance.recommendedTimelineForcedWords,
 				recommendedTimelineSettings: instance.recommendedTimelineSettings,
 				hashtagSearchPartialMatch: instance.hashtagSearchPartialMatch,
+				enableUserRoleEditor: instance.enableUserRoleEditor,
+				userRoleCreateLimit: instance.userRoleCreateLimit,
 				abuseReportReasons: getAbuseReportReasons(instance.abuseReportReasons),
 				perLocalUserUserTimelineCacheMax: instance.perLocalUserUserTimelineCacheMax,
 				perRemoteUserUserTimelineCacheMax: instance.perRemoteUserUserTimelineCacheMax,
