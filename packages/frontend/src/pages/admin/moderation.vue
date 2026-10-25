@@ -124,6 +124,13 @@ SPDX-License-Identifier: AGPL-3.0-only
 					</MkSelect>
 				</SearchMarker>
 
+				<SearchMarker :keywords="['hashtag', 'search', 'partial', 'prefix']">
+					<MkSwitch v-model="hashtagSearchPartialMatch" @change="onChange_hashtagSearchPartialMatch">
+						<template #label><SearchLabel>{{ hashtagSearchAdminText.label }}</SearchLabel></template>
+						<template #caption>{{ hashtagSearchAdminText.caption }}</template>
+					</MkSwitch>
+				</SearchMarker>
+
 				<XServerRules/>
 
 				<SearchMarker :keywords="['preserved', 'usernames']">
@@ -264,6 +271,16 @@ import MkSelect from '@/components/MkSelect.vue';
 const meta = await misskeyApi('admin/meta');
 
 const enableRegistration = ref(!meta.disableRegistration);
+const hashtagSearchPartialMatch = ref(meta.hashtagSearchPartialMatch);
+const hashtagSearchAdminTexts: Record<string, { label: string; caption: string }> = {
+	'en-US': { label: 'Allow partial match in hashtag search', caption: 'When off, only hashtags that start with the query are found. When on, hashtags containing the query anywhere are also found.' },
+	'ja-JP': { label: 'ハッシュタグ検索で部分一致を許可する', caption: 'オフの場合は入力した語で始まるハッシュタグだけを検索します。オンにすると、語を含むハッシュタグも検索します。' },
+	'ja-KS': { label: 'ハッシュタグ検索で部分一致もええことにする', caption: 'オフやと打った言葉で始まるタグだけ探すで。オンにしたら、言葉が入っとるタグも探すで。' },
+	'ko-KR': { label: '해시태그 검색에서 부분 일치 허용', caption: '끄면 입력한 단어로 시작하는 해시태그만 검색합니다. 켜면 단어를 포함하는 해시태그도 검색합니다.' },
+	'zh-CN': { label: '允许标签搜索部分匹配', caption: '关闭时仅搜索以输入内容开头的标签。开启后也会搜索包含输入内容的标签。' },
+	'zh-TW': { label: '允許雜湊標籤搜尋部分符合', caption: '關閉時僅搜尋以輸入內容開頭的雜湊標籤。開啟後也會搜尋包含輸入內容的雜湊標籤。' },
+};
+const hashtagSearchAdminText = hashtagSearchAdminTexts[window.document.documentElement.lang] ?? hashtagSearchAdminTexts['en-US']!;
 const emailRequiredForSignup = ref(meta.emailRequiredForSignup);
 const {
 	model: ugcVisibilityForVisitor,
@@ -429,6 +446,14 @@ async function onChange_enableRegistration(value: boolean) {
 
 	os.apiWithDialog('admin/update-meta', {
 		disableRegistration: !value,
+	}).then(() => {
+		fetchInstance(true);
+	});
+}
+
+function onChange_hashtagSearchPartialMatch(value: boolean) {
+	os.apiWithDialog('admin/update-meta', {
+		hashtagSearchPartialMatch: value,
 	}).then(() => {
 		fetchInstance(true);
 	});

@@ -163,6 +163,7 @@ export const paramDef = {
 		recommendedTimelineAllowedUserIds: { type: 'array', maxItems: 100, items: { type: 'string', format: 'misskey:id' } },
 		recommendedTimelineForcedWords: { type: 'array', maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 64 } },
 		recommendedTimelineSettings: { type: 'object' },
+		hashtagSearchPartialMatch: { type: 'boolean' },
 		abuseReportReasons: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 512 } },
 		perLocalUserUserTimelineCacheMax: { type: 'integer' },
 		perRemoteUserUserTimelineCacheMax: { type: 'integer' },
@@ -706,6 +707,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 
 			if (ps.recommendedTimelineSettings !== undefined) {
 				set.recommendedTimelineSettings = ps.recommendedTimelineSettings;
+			}
+
+			if (ps.hashtagSearchPartialMatch !== undefined) {
+				set.hashtagSearchPartialMatch = ps.hashtagSearchPartialMatch;
 			}
 
 			if (ps.abuseReportReasons !== undefined) {

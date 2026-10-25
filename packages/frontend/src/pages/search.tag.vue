@@ -56,6 +56,7 @@ import MkError from '@/components/global/MkError.vue';
 import MkFoldableSection from '@/components/MkFoldableSection.vue';
 import MkInput from '@/components/MkInput.vue';
 import MkResult from '@/components/global/MkResult.vue';
+import { instance } from '@/instance.js';
 
 const props = withDefaults(defineProps<{
 	query?: string;
@@ -76,7 +77,24 @@ const hashtagSearchPrefixOnlyLabels: Record<string, string> = {
 	'es-ES': 'Solo se muestran los hashtags que comienzan con lo introducido.',
 	'pt-PT': 'São apresentadas apenas as hashtags que começam pelo que introduziu.',
 };
-const hashtagSearchPrefixOnlyLabel = hashtagSearchPrefixOnlyLabels[lang] ?? hashtagSearchPrefixOnlyLabels['en-US']!;
+const hashtagSearchPartialLabels: Record<string, string> = {
+	'en-US': 'Hashtags that contain your query are shown.',
+	'ja-JP': '入力した語を含むものを表示します。',
+	'ja-KS': '打った言葉が入っとるやつを出すで。',
+	'ko-KR': '입력한 단어를 포함하는 해시태그를 표시합니다.',
+	'ko-GS': '입력한 단어를 포함하는 해시태그를 표시합니다.',
+	'zh-CN': '显示包含输入内容的标签。',
+	'zh-TW': '顯示包含輸入內容的雜湊標籤。',
+	'de-DE': 'Es werden Hashtags angezeigt, die deine Eingabe enthalten.',
+	'fr-FR': 'Les hashtags contenant votre saisie sont affichés.',
+	'es-ES': 'Se muestran los hashtags que contienen lo introducido.',
+	'pt-PT': 'São apresentadas as hashtags que contêm o que introduziu.',
+};
+// 管理者の設定 (一致方法) に合わせて説明文を切り替える
+const hashtagSearchPrefixOnlyLabel = computed(() => {
+	const labels = instance.hashtagSearchPartialMatch ? hashtagSearchPartialLabels : hashtagSearchPrefixOnlyLabels;
+	return labels[lang] ?? labels['en-US']!;
+});
 
 const searchQuery = ref(toRef(props, 'query').value);
 const normalizedQuery = computed(() => searchQuery.value.trim().replace(/^#/, ''));

@@ -218,6 +218,10 @@ export const packedMetaLiteSchema = {
 			type: 'boolean',
 			optional: false, nullable: false,
 		},
+		hashtagSearchPartialMatch: {
+			type: 'boolean',
+			optional: false, nullable: false,
+		},
 		enableServiceWorker: {
 			type: 'boolean',
 			optional: false, nullable: false,

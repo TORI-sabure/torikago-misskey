@@ -5,7 +5,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { Endpoint } from '@/server/api/endpoint-base.js';
-import type { HashtagsRepository } from '@/models/_.js';
+import type { HashtagsRepository, MiMeta } from '@/models/_.js';
 import { DI } from '@/di-symbols.js';
 import { sqlLikeEscape } from '@/misc/sql-like-escape.js';
 
@@ -39,10 +39,14 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	constructor(
 		@Inject(DI.hashtagsRepository)
 		private hashtagsRepository: HashtagsRepository,
+
+		@Inject(DI.meta)
+		private serverSettings: MiMeta,
 	) {
 		super(meta, paramDef, async (ps, me) => {
 			const hashtags = await this.hashtagsRepository.createQueryBuilder('tag')
-				.where('tag.name like :q', { q: sqlLikeEscape(ps.query.toLowerCase()) + '%' })
+				// 既定は前方一致。管理画面の設定で部分一致にできる (前方一致と同じく件数順に走査するので、ヒットが多い語ほど早く終わる)
+				.where('tag.name like :q', { q: (this.serverSettings.hashtagSearchPartialMatch ? '%' : '') + sqlLikeEscape(ps.query.toLowerCase()) + '%' })
 				.orderBy('tag.mentionedLocalUsersCount', 'DESC')
 				.groupBy('tag.id')
 				.limit(ps.limit)

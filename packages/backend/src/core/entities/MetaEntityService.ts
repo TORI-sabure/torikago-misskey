@@ -123,6 +123,7 @@ export class MetaEntityService {
 			})),
 			notesPerOneAd: instance.notesPerOneAd,
 			enableEmail: instance.enableEmail,
+			hashtagSearchPartialMatch: instance.hashtagSearchPartialMatch,
 			enableServiceWorker: instance.enableServiceWorker,
 
 			translatorAvailable: instance.deeplAuthKey != null,

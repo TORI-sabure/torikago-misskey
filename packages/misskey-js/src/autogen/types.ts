@@ -5639,6 +5639,7 @@ export type components = {
             /** @default 0 */
             notesPerOneAd: number;
             enableEmail: boolean;
+            hashtagSearchPartialMatch: boolean;
             enableServiceWorker: boolean;
             translatorAvailable: boolean;
             sentryForFrontend: {
@@ -9833,6 +9834,7 @@ export interface operations {
                         recommendedTimelineAllowedUserIds: string[];
                         recommendedTimelineForcedWords: string[];
                         recommendedTimelineSettings: Record<string, never>;
+                        hashtagSearchPartialMatch: boolean;
                         abuseReportReasons: string[];
                         perLocalUserUserTimelineCacheMax: number;
                         perRemoteUserUserTimelineCacheMax: number;
@@ -13382,6 +13384,7 @@ export interface operations {
                     recommendedTimelineAllowedUserIds?: string[];
                     recommendedTimelineForcedWords?: string[];
                     recommendedTimelineSettings?: Record<string, never>;
+                    hashtagSearchPartialMatch?: boolean;
                     abuseReportReasons?: string[];
                     perLocalUserUserTimelineCacheMax?: number;
                     perRemoteUserUserTimelineCacheMax?: number;
