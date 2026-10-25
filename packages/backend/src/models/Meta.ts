@@ -633,6 +633,12 @@ export class MiMeta {
 	})
 	public recommendedTimelineSettings: Record<string, any>;
 
+	@Column('boolean', {
+		default: false,
+		comment: 'Whether hashtag search matches anywhere in the tag name instead of only at its start.',
+	})
+	public hashtagSearchPartialMatch: boolean;
+
 	@Column('varchar', {
 		length: 512,
 		array: true,

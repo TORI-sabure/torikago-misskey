@@ -422,6 +422,10 @@ export const meta = {
 				type: 'object',
 				optional: false, nullable: false,
 			},
+			hashtagSearchPartialMatch: {
+				type: 'boolean',
+				optional: false, nullable: false,
+			},
 			abuseReportReasons: {
 				type: 'array',
 				optional: false, nullable: false,
@@ -787,6 +791,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 				recommendedTimelineAllowedUserIds: instance.recommendedTimelineAllowedUserIds,
 				recommendedTimelineForcedWords: instance.recommendedTimelineForcedWords,
 				recommendedTimelineSettings: instance.recommendedTimelineSettings,
+				hashtagSearchPartialMatch: instance.hashtagSearchPartialMatch,
 				abuseReportReasons: getAbuseReportReasons(instance.abuseReportReasons),
 				perLocalUserUserTimelineCacheMax: instance.perLocalUserUserTimelineCacheMax,
 				perRemoteUserUserTimelineCacheMax: instance.perRemoteUserUserTimelineCacheMax,
