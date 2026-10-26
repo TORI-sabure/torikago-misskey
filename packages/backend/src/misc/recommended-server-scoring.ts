@@ -185,6 +185,11 @@ export type SourceSelectionSettings = {
 	reactionAffinityPercent: number;
 	followingPercent: number;
 	unknownPercent: number;
+	/**
+	 * 自分のアンテナ由来の枠の割合 (結果全体に対する %、他の 3 つの割合とは別枠)。0 または未指定なら使わない。
+	 * 残りの枠 (100 - antennaPercent) を、上の 3 つの割合で分ける。
+	 */
+	antennaPercent?: number;
 };
 
 /**
@@ -206,9 +211,16 @@ export function selectBySource<T extends SelectableItem>(
 	random: (key: string) => number,
 	existingAuthorCounts: ReadonlyMap<string, number> = new Map(),
 ): T[] {
-	const bySource = new Map(['following', 'reactionAffinity', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
+	const bySource = new Map(['antenna', 'following', 'reactionAffinity', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
 	const percentages: Array<[string, number]> = [['reactionAffinity', settings.reactionAffinityPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
 	if (percentages.every(([, percent]) => percent === 0)) percentages[0]![1] = 100;
+	const antennaPercent = Math.min(100, Math.max(0, settings.antennaPercent ?? 0));
+	if (antennaPercent > 0) {
+		// アンテナ枠を別枠として先に確保し、残りを従来の割合 (合計 100) で分ける。
+		const total = percentages.reduce((sum, [, percent]) => sum + percent, 0) || 1;
+		for (const entry of percentages) entry[1] = entry[1] / total * (100 - antennaPercent);
+		percentages.push(['antenna', antennaPercent]);
+	}
 	const out: T[] = []; const counts = new Map(existingAuthorCounts); const targets = new Set<string>();
 	const serverCap = serverCapFor(settings.resultLimit, settings.maxServerPercent);
 	const serverCounts = new Map<string, number>();
