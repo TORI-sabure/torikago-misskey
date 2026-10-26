@@ -2159,6 +2159,14 @@ declare namespace entities {
         RolesNotesResponse,
         RolesShowRequest,
         RolesShowResponse,
+        RolesUserAssignRequest,
+        RolesUserCreateRequest,
+        RolesUserCreateResponse,
+        RolesUserDeleteRequest,
+        RolesUserListRequest,
+        RolesUserListResponse,
+        RolesUserUpdateRequest,
+        RolesUserUpdateResponse,
         RolesUsersRequest,
         RolesUsersResponse,
         ServerInfoResponse,
@@ -3436,10 +3444,34 @@ type RolesShowRequest = operations['roles___show']['requestBody']['content']['ap
 type RolesShowResponse = operations['roles___show']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
+type RolesUserAssignRequest = operations['roles___user___assign']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type RolesUserCreateRequest = operations['roles___user___create']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type RolesUserCreateResponse = operations['roles___user___create']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
+type RolesUserDeleteRequest = operations['roles___user___delete']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type RolesUserListRequest = operations['roles___user___list']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type RolesUserListResponse = operations['roles___user___list']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
 type RolesUsersRequest = operations['roles___users']['requestBody']['content']['application/json'];
 
 // @public (undocumented)
 type RolesUsersResponse = operations['roles___users']['responses']['200']['content']['application/json'];
+
+// @public (undocumented)
+type RolesUserUpdateRequest = operations['roles___user___update']['requestBody']['content']['application/json'];
+
+// @public (undocumented)
+type RolesUserUpdateResponse = operations['roles___user___update']['responses']['200']['content']['application/json'];
 
 // @public (undocumented)
 type ServerInfoResponse = operations['server-info']['responses']['200']['content']['application/json'];
