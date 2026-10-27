@@ -190,6 +190,8 @@ export type SourceSelectionSettings = {
 	 * 残りの枠 (100 - antennaPercent) を、上の 3 つの割合で分ける。
 	 */
 	antennaPercent?: number;
+	/** 自分のユーザーリスト由来の枠。antennaPercent と同じ扱いで、合計 100 を超える分は丸める */
+	userListPercent?: number;
 };
 
 /**
@@ -211,15 +213,17 @@ export function selectBySource<T extends SelectableItem>(
 	random: (key: string) => number,
 	existingAuthorCounts: ReadonlyMap<string, number> = new Map(),
 ): T[] {
-	const bySource = new Map(['antenna', 'following', 'reactionAffinity', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
+	const bySource = new Map(['antenna', 'userList', 'following', 'reactionAffinity', 'unknown'].map(source => [source, items.filter(item => item.source === source).sort((a, b) => b.quality - a.quality)]));
 	const percentages: Array<[string, number]> = [['reactionAffinity', settings.reactionAffinityPercent], ['following', settings.followingPercent], ['unknown', settings.unknownPercent]];
 	if (percentages.every(([, percent]) => percent === 0)) percentages[0]![1] = 100;
 	const antennaPercent = Math.min(100, Math.max(0, settings.antennaPercent ?? 0));
-	if (antennaPercent > 0) {
-		// アンテナ枠を別枠として先に確保し、残りを従来の割合 (合計 100) で分ける。
+	const userListPercent = Math.min(100 - antennaPercent, Math.max(0, settings.userListPercent ?? 0));
+	if (antennaPercent > 0 || userListPercent > 0) {
+		// アンテナ・リストの枠を別枠として先に確保し、残りを従来の割合 (合計 100) で分ける。
 		const total = percentages.reduce((sum, [, percent]) => sum + percent, 0) || 1;
-		for (const entry of percentages) entry[1] = entry[1] / total * (100 - antennaPercent);
-		percentages.push(['antenna', antennaPercent]);
+		for (const entry of percentages) entry[1] = entry[1] / total * (100 - antennaPercent - userListPercent);
+		if (antennaPercent > 0) percentages.push(['antenna', antennaPercent]);
+		if (userListPercent > 0) percentages.push(['userList', userListPercent]);
 	}
 	const out: T[] = []; const counts = new Map(existingAuthorCounts); const targets = new Set<string>();
 	const serverCap = serverCapFor(settings.resultLimit, settings.maxServerPercent);

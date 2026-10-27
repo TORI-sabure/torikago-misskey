@@ -68,6 +68,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 								<MkInput v-model.number="recommendedSettings.followingPercent" type="number"><template #label>{{ recommendedTimelineAdminText.followingPercent }}</template></MkInput>
 								<MkInput v-model.number="recommendedSettings.unknownPercent" type="number"><template #label>{{ recommendedTimelineAdminText.unknownPercent }}</template></MkInput>
 								<MkInput v-model.number="recommendedSettings.antennaPercent" type="number"><template #label>{{ antennaPercentText.label }}</template><template #caption>{{ antennaPercentText.caption }}</template></MkInput>
+								<MkInput v-model.number="recommendedSettings.userListPercent" type="number"><template #label>{{ userListPercentText.label }}</template><template #caption>{{ userListPercentText.caption }}</template></MkInput>
 							</div>
 							<div class="_gaps_s">
 								<MkInput v-model.number="recommendedSettings.qualityPercent" type="number"><template #label>{{ recommendedTimelineAdminText.qualityPercent }}</template></MkInput>
@@ -354,12 +355,18 @@ const recommendedSettings = ref({
 	serverDiversityBonus: typeof recommendedRawSettings.serverDiversityBonus === 'number' ? recommendedRawSettings.serverDiversityBonus : 2,
 	maxServerPercent: typeof recommendedRawSettings.maxServerPercent === 'number' ? recommendedRawSettings.maxServerPercent : 40,
 	antennaPercent: typeof recommendedRawSettings.antennaPercent === 'number' ? recommendedRawSettings.antennaPercent : 10,
+	userListPercent: typeof recommendedRawSettings.userListPercent === 'number' ? recommendedRawSettings.userListPercent : 10,
 });
 const antennaPercentTexts: Record<string, { label: string; caption: string }> = {
 	'en-US': { label: 'Share from the reader\'s own antennas (%)', caption: 'Separate from the three shares above (which add up to 100%). Only notes from accounts that are neither followed nor reacted to often are counted here. 0 turns it off.' },
 	'ja-JP': { label: '本人のアンテナ由来の割合（%）', caption: '上の3つの割合（合計100%）とは別枠です。フォロー中・よくリアクションする人以外のアカウントのノートだけが対象です。0でオフになります。' },
 };
 const antennaPercentText = antennaPercentTexts[window.document.documentElement.lang] ?? antennaPercentTexts['en-US']!;
+const userListPercentTexts: Record<string, { label: string; caption: string }> = {
+	'en-US': { label: 'Share from the reader\'s own user lists (%)', caption: 'Separate from the three shares above (which add up to 100%), like the antenna share. Only notes from accounts that are neither followed nor reacted to often are counted here. 0 turns it off.' },
+	'ja-JP': { label: '本人のリスト由来の割合（%）', caption: 'アンテナと同じく、上の3つの割合（合計100%）とは別枠です。フォロー中・よくリアクションする人以外のアカウントのノートだけが対象です。0でオフになります。' },
+};
+const userListPercentText = userListPercentTexts[window.document.documentElement.lang] ?? userListPercentTexts['en-US']!;
 const recommendedForcedAccounts = ref(Array.isArray(recommendedRawSettings.forcedAccounts) ? recommendedRawSettings.forcedAccounts.join('\n') : '');
 const recommendedBoostWords = ref(Array.isArray(recommendedRawSettings.boostWords) ? recommendedRawSettings.boostWords.join('\n') : '');
 const recommendedNegativeWords = ref(Array.isArray(recommendedRawSettings.negativeWords) ? recommendedRawSettings.negativeWords.join('\n') : '');

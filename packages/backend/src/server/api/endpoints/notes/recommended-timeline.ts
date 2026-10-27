@@ -7,7 +7,7 @@ import { In } from 'typeorm';
 import { Inject, Injectable } from '@nestjs/common';
 import ms from 'ms';
 import type Redis from 'ioredis';
-import type { AntennasRepository, DriveFilesRepository, FollowingsRepository, MiMeta, NoteFavoritesRepository, NoteReactionsRepository, NotesRepository } from '@/models/_.js';
+import type { AntennasRepository, UserListsRepository, DriveFilesRepository, FollowingsRepository, MiMeta, NoteFavoritesRepository, NoteReactionsRepository, NotesRepository } from '@/models/_.js';
 import type { MiLocalUser } from '@/models/User.js';
 import { DI } from '@/di-symbols.js';
 import { Endpoint } from '@/server/api/endpoint-base.js';
@@ -45,6 +45,8 @@ type Settings = {
 	// Share of one page (% of the result limit) reserved for notes from the reader's own antennas.
 	// It is separate from the three source percentages above, which still add up to 100.
 	antennaPercent: number;
+	// Same idea for the reader's own user lists.
+	userListPercent: number;
 	qualityPercent: number;
 	balancedPercent: number;
 	freshPercent: number;
@@ -86,6 +88,7 @@ const defaults: Settings = {
 	followingPercent: 20,
 	unknownPercent: 20,
 	antennaPercent: 10,
+	userListPercent: 10,
 	qualityPercent: 50,
 	balancedPercent: 30,
 	freshPercent: 20,
@@ -125,6 +128,8 @@ type RecommendationContext = {
 	followingIds: string[];
 	// Active antennas owned by the reader (newest first). Cached with the rest of the context.
 	antennaIds: string[];
+	// User lists owned by the reader (newest first).
+	userListIds: string[];
 	reactionAffinity: Array<[string, number]>;
 	favoriteAffinity: Array<[string, number]>;
 	renoteAffinity: Array<[string, number]>;
@@ -189,6 +194,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		@Inject(DI.followingsRepository) private followingsRepository: FollowingsRepository,
 		@Inject(DI.driveFilesRepository) private driveFilesRepository: DriveFilesRepository,
 		@Inject(DI.antennasRepository) private antennasRepository: AntennasRepository,
+		@Inject(DI.userListsRepository) private userListsRepository: UserListsRepository,
 		@Inject(DI.noteReactionsRepository) private noteReactionsRepository: NoteReactionsRepository,
 		@Inject(DI.noteFavoritesRepository) private noteFavoritesRepository: NoteFavoritesRepository,
 		@Inject(DI.redis) private redisClient: Redis.Redis,
@@ -427,7 +433,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			candidatePoolLimit: unboundedInteger('candidatePoolLimit', 100), candidateScanLimit: integer('candidateScanLimit', 30, 200), resultLimit: integer('resultLimit', 20, 100),
 			snapshotHours: integer('snapshotHours', 1, 168), seenDays: integer('seenDays', 1, 30), seenLimit: integer('seenLimit', 1000, 100000),
 			reactionAffinityPercent: typeof raw.reactionAffinityPercent === 'number' && Number.isFinite(raw.reactionAffinityPercent) ? Math.min(100, Math.max(0, Math.floor(raw.reactionAffinityPercent))) : legacyReactionAffinityPercent, followingPercent: integer('followingPercent', 0, 100), unknownPercent: integer('unknownPercent', 0, 100),
-			antennaPercent: integer('antennaPercent', 0, 100),
+			antennaPercent: integer('antennaPercent', 0, 100), userListPercent: integer('userListPercent', 0, 100),
 			qualityPercent: integer('qualityPercent', 0, 100), balancedPercent: integer('balancedPercent', 0, 100), freshPercent: integer('freshPercent', 0, 100),
 			maxNotesPerAuthor: integer('maxNotesPerAuthor', 1, 10), publicBonus: integer('publicBonus', 0, 100), localUserBonus: integer('localUserBonus', 0, 100), followingBonus: integer('followingBonus', 0, 100), reactionAffinityBonus: integer('reactionAffinityBonus', 0, 100), reactionBonus: integer('reactionBonus', 0, 100), boostBonus: integer('boostBonus', 0, 100), sensitivePenalty: integer('sensitivePenalty', 0, 100), botPenalty: integer('botPenalty', 0, 100),
 			negativePenalty: integer('negativePenalty', 0, 100), minimumScore: integer('minimumScore', -100, 100), serverAffinityBonus: integer('serverAffinityBonus', 0, 100), serverDiversityBonus: integer('serverDiversityBonus', 0, 100), maxServerPercent: integer('maxServerPercent', 10, 100), fallbackMaxAgeDays: integer('fallbackMaxAgeDays', 7, 365), forcedLimit: integer('forcedLimit', 0, 20),
@@ -546,7 +552,12 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			? [...new Set((await Promise.all(context.antennaIds.slice(0, ANTENNA_SOURCE_MAX_ANTENNAS).map(antennaId => this.redisForTimelines.lrange(`list:antennaTimeline:${antennaId}`, 0, ANTENNA_SOURCE_WINDOW - 1)))).flat())]
 			: [];
 		const antennaSet = new Set(antennaNoteIds);
-		const rawSourceIds = [...homeTimelineIds, ...homeTimelineHeadIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id), ...antennaNoteIds];
+		// Notes of the reader's own user lists. A note in several lists is one id here.
+		const userListNoteIds = includePersonalizedSources && settings.userListPercent > 0 && context.userListIds.length > 0
+			? [...new Set((await Promise.all(context.userListIds.slice(0, ANTENNA_SOURCE_MAX_ANTENNAS).map(listId => this.redisForTimelines.lrange(`list:userListTimeline:${listId}`, 0, ANTENNA_SOURCE_WINDOW - 1)))).flat())]
+			: [];
+		const userListSet = new Set(userListNoteIds);
+		const rawSourceIds = [...homeTimelineIds, ...homeTimelineHeadIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id), ...antennaNoteIds, ...userListNoteIds];
 		await seen.prime(rawSourceIds);
 		const sourceIds = rawSourceIds.filter(id => !seen.has(id) && !excludedTargets.has(id));
 		const hydrationIds = [...new Set([...candidateIds, ...sourceIds])];
@@ -575,7 +586,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// Followed and reaction-affinity authors keep their own slots (they reach the shortlist
 			// through other sources too). Only antenna notes from other authors take the antenna
 			// slot, so one note never counts towards two shares.
-			const source = directSet.has(note.userId) ? 'following' : reactionAffinitySet.has(note.userId) ? 'reactionAffinity' : antennaSet.has(note.id) ? 'antenna' : 'unknown';
+			const source = directSet.has(note.userId) ? 'following' : reactionAffinitySet.has(note.userId) ? 'reactionAffinity' : antennaSet.has(note.id) ? 'antenna' : userListSet.has(note.id) ? 'userList' : 'unknown';
 			// A renote with no own text or CW is the only form that may be replaced
 			// with its original. Quote posts retain their wrapper and commentary.
 			const plainRenote = note.renote != null && (note.text == null || note.text === '') && (note.cw == null || note.cw === '');
@@ -684,7 +695,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			try {
 				const context = JSON.parse(cached) as RecommendationContext;
 				// An entry written before the server affinity fields existed is rebuilt below.
-				if (Array.isArray(context.followingIds) && Array.isArray(context.antennaIds) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity) && Array.isArray(context.serverAffinity) && typeof context.serverAffinityTotal === 'number') {
+				if (Array.isArray(context.followingIds) && Array.isArray(context.antennaIds) && Array.isArray(context.userListIds) && Array.isArray(context.reactionAffinity) && Array.isArray(context.favoriteAffinity) && Array.isArray(context.renoteAffinity) && Array.isArray(context.serverAffinity) && typeof context.serverAffinityTotal === 'number') {
 					if (isContextStale(context.builtAt, Date.now())) {
 						// Serve the stale value now and let exactly one request rebuild it, so
 						// nobody waits for the reaction scan once the soft TTL has passed.
@@ -708,6 +719,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 	private async buildRecommendationContext(me: MiLocalUser, settings: Settings, key: string): Promise<RecommendationContext> {
 		const followingIds = (await this.followingsRepository.find({ select: { followeeId: true }, where: { followerId: me.id } })).map(row => row.followeeId);
 		const antennaIds = (await this.antennasRepository.find({ select: { id: true }, where: { userId: me.id, isActive: true }, order: { id: 'DESC' }, take: ANTENNA_SOURCE_MAX_ANTENNAS })).map(row => row.id);
+		const userListIds = (await this.userListsRepository.find({ select: { id: true }, where: { userId: me.id }, order: { id: 'DESC' }, take: ANTENNA_SOURCE_MAX_ANTENNAS })).map(row => row.id);
 		const reactionInterestLimit = Math.min(200, Math.max(80, settings.candidateScanLimit * 2));
 		// Interest discovery is intentionally independent from the follow graph.
 		// It stays bounded and does not traverse anyone else's follow relationships.
@@ -751,6 +763,7 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const context: RecommendationContext = {
 			followingIds,
 			antennaIds,
+			userListIds,
 			reactionAffinity,
 			favoriteAffinity: favoriteRows.map(row => [row.userId, Number(row.count)]),
 			renoteAffinity: renoteRows.map(row => [row.userId, Number(row.count)]),
