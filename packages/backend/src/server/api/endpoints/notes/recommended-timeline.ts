@@ -455,7 +455,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		const followingIds = context.followingIds;
 		const directIds = followingIds;
 		const reactionAffinityIds = context.reactionAffinity.map(([userId]) => userId);
-		if (candidateIds.length === 0 && (!includePersonalizedSources || (directIds.length === 0 && reactionAffinityIds.length === 0))) return [];
+		// The reader's own antennas are a source of their own, so a reader without follows or reactions
+		// still has something to look at when the shared pool has nothing new.
+		const hasAntennaSource = includePersonalizedSources && settings.antennaPercent > 0 && context.antennaIds.length > 0;
+		if (candidateIds.length === 0 && !hasAntennaSource && (!includePersonalizedSources || (directIds.length === 0 && reactionAffinityIds.length === 0))) return [];
 
 		const reactionAffinity = new Map(context.reactionAffinity);
 		const favoriteAffinity = new Map(context.favoriteAffinity);
