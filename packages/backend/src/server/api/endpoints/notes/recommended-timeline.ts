@@ -647,9 +647,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		// configured minimum score consistently, including followed accounts. The threshold is
 		// judged on the score before the server bonuses: those only reorder candidates, so they
 		// must neither admit a note the rules rejected nor offset a negative-rule penalty.
-		// Notes from the reader's own antennas are chosen by the reader, so they are not held to the
+		// Notes from the reader's own antennas and user lists are chosen by the reader, so they are not held to the
 		// score threshold either: a quiet, non-public note scores low on engagement but is still wanted.
-		const passesMinimumScore = new Set(dedupedScored.filter(item => item.forced || item.source === 'antenna' || item.quality >= settings.minimumScore).map(item => item.targetId));
+		const passesMinimumScore = new Set(dedupedScored.filter(item => item.forced || item.source === 'antenna' || item.source === 'userList' || item.quality >= settings.minimumScore).map(item => item.targetId));
 		const eligible = uniqueScored.filter(item => passesMinimumScore.has(item.targetId));
 		const selectionSettings = { ...settings, resultLimit: Math.max(0, resultLimit - forced.length) };
 		const selected = this.selectSources(eligible.filter(item => !item.forced && !forcedTargets.has(item.targetId)), selectionSettings, seed, selectedAuthorCounts);
