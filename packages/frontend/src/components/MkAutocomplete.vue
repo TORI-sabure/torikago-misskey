@@ -55,6 +55,7 @@ import { elementContains } from '@/utility/element-contains.js';
 import { acct } from '@@/js/user.js';
 import * as os from '@/os.js';
 import { misskeyApi } from '@/utility/misskey-api.js';
+import { instance } from '@/instance.js';
 import { store } from '@/store.js';
 import { i18n } from '@/i18n.js';
 import { miLocalStorage } from '@/local-storage.js';
@@ -266,11 +267,11 @@ function exec() {
 			hashtags.value = JSON.parse(miLocalStorage.getItem('hashtags') ?? '[]');
 			fetching.value = false;
 		} else {
-			const cacheKey = `autocomplete:hashtag:${props.q}`;
+			// 前方一致/部分一致の設定で結果が変わるので、キャッシュのキーにも含める (切り替え前の結果を使い回さない)
+			const cacheKey = `autocomplete:hashtag:${instance.hashtagSearchPartialMatch ? 'partial' : 'prefix'}:${props.q}`;
 			const cache = sessionStorage.getItem(cacheKey);
 			if (cache) {
-				const hashtags = JSON.parse(cache);
-				hashtags.value = hashtags;
+				hashtags.value = JSON.parse(cache);
 				fetching.value = false;
 			} else {
 				misskeyApi('hashtags/search', {
