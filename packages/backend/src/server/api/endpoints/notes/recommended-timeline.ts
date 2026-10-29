@@ -7,7 +7,7 @@ import { In } from 'typeorm';
 import { Inject, Injectable } from '@nestjs/common';
 import ms from 'ms';
 import type Redis from 'ioredis';
-import type { AntennasRepository, UserListMembershipsRepository, UserListsRepository, DriveFilesRepository, FollowingsRepository, MiMeta, NoteFavoritesRepository, NoteReactionsRepository, NotesRepository } from '@/models/_.js';
+import type { AntennasRepository, UserListsRepository, DriveFilesRepository, FollowingsRepository, MiMeta, NoteFavoritesRepository, NoteReactionsRepository, NotesRepository } from '@/models/_.js';
 import type { MiLocalUser } from '@/models/User.js';
 import { DI } from '@/di-symbols.js';
 import { Endpoint } from '@/server/api/endpoint-base.js';
@@ -195,7 +195,6 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 		@Inject(DI.driveFilesRepository) private driveFilesRepository: DriveFilesRepository,
 		@Inject(DI.antennasRepository) private antennasRepository: AntennasRepository,
 		@Inject(DI.userListsRepository) private userListsRepository: UserListsRepository,
-		@Inject(DI.userListMembershipsRepository) private userListMembershipsRepository: UserListMembershipsRepository,
 		@Inject(DI.noteReactionsRepository) private noteReactionsRepository: NoteReactionsRepository,
 		@Inject(DI.noteFavoritesRepository) private noteFavoritesRepository: NoteFavoritesRepository,
 		@Inject(DI.redis) private redisClient: Redis.Redis,
@@ -557,30 +556,9 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			: [];
 		const antennaSet = new Set(antennaNoteIds);
 		// Notes of the reader's own user lists. A note in several lists is one id here.
-		const userListRedisNoteIds = includePersonalizedSources && settings.userListPercent > 0 && context.userListIds.length > 0
+		const userListNoteIds = includePersonalizedSources && settings.userListPercent > 0 && context.userListIds.length > 0
 			? [...new Set((await Promise.all(context.userListIds.slice(0, ANTENNA_SOURCE_MAX_ANTENNAS).map(listId => this.redisForTimelines.lrange(`list:userListTimeline:${listId}`, 0, ANTENNA_SOURCE_WINDOW - 1)))).flat())]
 			: [];
-		// List timelines in Redis exist only while fanout timelines are enabled, and only fill with notes
-		// posted after a member was added. Without them, read the members' recent notes from the database
-		// (IDs only, bounded), the same way the Home source falls back.
-		const userListFallbackIds = includePersonalizedSources && settings.userListPercent > 0 && context.userListIds.length > 0 && userListRedisNoteIds.length === 0
-			? await (async () => {
-				const memberships = await this.userListMembershipsRepository.find({ select: { userId: true }, where: { userListId: In(context.userListIds.slice(0, ANTENNA_SOURCE_MAX_ANTENNAS)) }, order: { id: 'DESC' }, take: 200 });
-				const memberIds = [...new Set(memberships.map(row => row.userId))];
-				if (memberIds.length === 0) return [] as string[];
-				const rows = await this.notesRepository.createQueryBuilder('note')
-					.select('note.id', 'id')
-					.andWhere('note.userId = ANY(:memberIds)', { memberIds })
-					.andWhere('note.channelId IS NULL')
-					.andWhere('(note.replyId IS NULL OR note.replyUserId = note.userId)')
-					.andWhere('note.id >= :oldestId', { oldestId: this.idService.gen(Date.now() - settings.fallbackMaxAgeDays * 86400000) })
-					.orderBy('note.id', 'DESC')
-					.take(ANTENNA_SOURCE_WINDOW)
-					.getRawMany<{ id: string }>();
-				return rows.map(row => row.id);
-			})()
-			: [];
-		const userListNoteIds = [...userListRedisNoteIds, ...userListFallbackIds];
 		const userListSet = new Set(userListNoteIds);
 		const rawSourceIds = [...homeTimelineIds, ...homeTimelineHeadIds, ...directRows.map(row => row.id), ...reactionAffinityRowsForNotes.map(row => row.id), ...antennaNoteIds, ...userListNoteIds];
 		await seen.prime(rawSourceIds);
