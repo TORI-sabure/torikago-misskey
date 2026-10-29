@@ -293,6 +293,44 @@ describe('misc:recommended-server-scoring selectBySource', () => {
 		expect(selected).toHaveLength(baseSettings.resultLimit);
 	});
 
+	test('アンテナ枠は別枠として確保され、残りは従来の割合で分ける', () => {
+		const items = makeItems([
+			{ source: 'antenna', host: null, count: 30 },
+			{ source: 'reactionAffinity', host: null, count: 60 },
+			{ source: 'following', host: null, count: 60 },
+			{ source: 'unknown', host: null, count: 60 },
+		]);
+		const selected = selectBySource(items, { ...baseSettings, antennaPercent: 25, maxNotesPerAuthor: 10 }, 'seed', seededRandom);
+		expect(selected).toHaveLength(baseSettings.resultLimit);
+		expect(selected.filter(item => item.source === 'antenna')).toHaveLength(10);
+		expect(selected.filter(item => item.source === 'reactionAffinity')).toHaveLength(18);
+		expect(new Set(selected.map(item => item.id)).size).toBe(selected.length);
+	});
+
+	test('アンテナ枠とリスト枠は別枠で、合わせて残りを従来の割合で分ける', () => {
+		const items = makeItems([
+			{ source: 'antenna', host: null, count: 30 },
+			{ source: 'userList', host: null, count: 30 },
+			{ source: 'reactionAffinity', host: null, count: 60 },
+			{ source: 'following', host: null, count: 60 },
+			{ source: 'unknown', host: null, count: 60 },
+		]);
+		const selected = selectBySource(items, { ...baseSettings, antennaPercent: 25, userListPercent: 25, maxNotesPerAuthor: 10 }, 'seed', seededRandom);
+		expect(selected).toHaveLength(baseSettings.resultLimit);
+		expect(selected.filter(item => item.source === 'antenna')).toHaveLength(10);
+		expect(selected.filter(item => item.source === 'userList')).toHaveLength(10);
+		expect(selected.filter(item => item.source === 'reactionAffinity')).toHaveLength(12);
+		expect(new Set(selected.map(item => item.id)).size).toBe(selected.length);
+	});
+
+	test('アンテナ由来の候補が無ければ他の枠で埋める。antennaPercent が 0 なら従来どおり', () => {
+		const items = makeItems([{ source: 'unknown', host: null, count: 60 }, { source: 'antenna', host: null, count: 10 }]);
+		const none = selectBySource(items.filter(item => item.source !== 'antenna'), { ...baseSettings, antennaPercent: 30, maxNotesPerAuthor: 10 }, 'seed', seededRandom);
+		expect(none).toHaveLength(baseSettings.resultLimit);
+		const off = selectBySource(items, { ...baseSettings, antennaPercent: 0, maxNotesPerAuthor: 10 }, 'seed', seededRandom);
+		expect(off.some(item => item.source === 'antenna')).toBe(false);
+	});
+
 	test('ローカル (null) は上限の対象外', () => {
 		const items = makeItems([{ source: 'unknown', host: null, count: 60 }]);
 		expect(selectBySource(items, baseSettings, 'seed', seededRandom)).toHaveLength(baseSettings.resultLimit);

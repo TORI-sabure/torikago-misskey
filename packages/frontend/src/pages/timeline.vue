@@ -27,12 +27,13 @@ SPDX-License-Identifier: AGPL-3.0-only
 </template>
 
 <script lang="ts" setup>
-import { computed, watch, provide, useTemplateRef, ref, onMounted, onActivated } from 'vue';
+import { computed, watch, provide, useTemplateRef, ref, onMounted, onActivated, onUnmounted } from 'vue';
 import type { Tab } from '@/components/global/MkPageHeader.tabs.vue';
 import type { MenuItem } from '@/types/menu.js';
 import type { BasicTimelineType } from '@/timelines.js';
 import type { PageHeaderItem } from '@/types/page-header.js';
 import MkStreamingNotesTimeline from '@/components/MkStreamingNotesTimeline.vue';
+import { clearAllRecommendedTimelineCache } from '@/utility/recommended-timeline-cache.js';
 import MkPostForm from '@/components/MkPostForm.vue';
 import * as os from '@/os.js';
 import { store } from '@/store.js';
@@ -291,6 +292,10 @@ onMounted(() => {
 });
 onActivated(() => {
 	switchTlIfNeeded();
+});
+// おすすめTLの保持内容は、このページ内でのタイムライン切り替えのためだけに使う
+onUnmounted(() => {
+	clearAllRecommendedTimelineCache();
 });
 watch(recommendedTimelineAccessChecked, () => {
 	switchTlIfNeeded();
