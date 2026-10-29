@@ -589,7 +589,10 @@ export default class extends Endpoint<typeof meta, typeof paramDef> { // eslint-
 			// Followed and reaction-affinity authors keep their own slots (they reach the shortlist
 			// through other sources too). Only antenna notes from other authors take the antenna
 			// slot, so one note never counts towards two shares.
-			const source = directSet.has(note.userId) ? 'following' : reactionAffinitySet.has(note.userId) ? 'reactionAffinity' : antennaSet.has(note.id) ? 'antenna' : userListSet.has(note.id) ? 'userList' : 'unknown';
+			// A user list is something the reader curated, and lists mostly hold accounts they already
+			// follow. Its notes therefore take the list slot even from followed authors; otherwise the list
+			// would add nothing the Home source does not already provide.
+			const source = userListSet.has(note.id) ? 'userList' : directSet.has(note.userId) ? 'following' : reactionAffinitySet.has(note.userId) ? 'reactionAffinity' : antennaSet.has(note.id) ? 'antenna' : 'unknown';
 			// A renote with no own text or CW is the only form that may be replaced
 			// with its original. Quote posts retain their wrapper and commentary.
 			const plainRenote = note.renote != null && (note.text == null || note.text === '') && (note.cw == null || note.cw === '');
